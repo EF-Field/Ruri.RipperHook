@@ -4,8 +4,9 @@
 
 `main` is the Blender 5.3 / Statement kernel line. The frontend follows main and
 pins a verified private adapter/runtime; `codex/blender-5.2` remains the separate
-legacy compatibility-maintenance line. User acceptance currently covers manual
-model/animation imports, not all rendering or game-runtime features. Preserve
+legacy compatibility-maintenance line. User acceptance covers manual model,
+animation and checked-material appearance; effects are deferred, and this does
+not certify all rendering or game-runtime features. Preserve
 public/private source and artifact isolation.
 
 ```
