@@ -1,5 +1,13 @@
 # Public kernel and optional private source adapter
 
+## Mainline policy (2026-10-13)
+
+`main` is the Blender 5.3 / Statement kernel line. The frontend follows main and
+pins a verified private adapter/runtime; `codex/blender-5.2` remains the separate
+legacy compatibility-maintenance line. User acceptance currently covers manual
+model/animation imports, not all rendering or game-runtime features. Preserve
+public/private source and artifact isolation.
+
 ```
 KawakazeNotFound/RuriRipperImporter (public host)
   Ruri.RipperHook -> KawakazeNotFound/Ruri.RipperHook (public kernel)
