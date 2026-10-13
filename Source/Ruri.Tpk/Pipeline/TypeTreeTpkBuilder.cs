@@ -16,6 +16,7 @@ internal static class TypeTreeTpkBuilder
     private const string CommonDirectoryName = "Common";
     private const string UnityNamesSuffix = ".unity";
 
+#if !RURI_TPK_UPGRADE_ONLY
     public static void WriteFromDumpRoot(string dumpRoot, string outputPath)
     {
         List<Snapshot> engine = ReadEngineSnapshots(dumpRoot);
@@ -53,6 +54,49 @@ internal static class TypeTreeTpkBuilder
 
         TpkFile.FromBlob(collection, TpkCompressionType.Brotli).WriteToFile(outputPath);
         Console.WriteLine($"[Build] Wrote {Path.GetFileName(outputPath)} from {dumpRoot} to {outputPath}");
+    }
+#endif
+
+    /// <summary>
+    /// Retain an accepted format-1 pack's renamed trees byte-for-byte and add
+    /// Unity's original vocabulary from the exact same declared dump chain.
+    /// This does not guess original names by reversing AssetRipper renaming.
+    /// </summary>
+    public static void UpgradeUnityNames(string inputPath, string dumpRoot, string outputPath)
+    {
+        if (string.Equals(Path.GetFullPath(inputPath), Path.GetFullPath(outputPath), StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Write an upgraded copy; the accepted input pack must remain untouched.");
+        using FileStream input = File.OpenRead(inputPath);
+        if (TpkFile.FromStream(input).GetDataBlob() is not TpkCollectionBlob collection)
+            throw new InvalidDataException("Expected a collection pack.");
+        TpkJsonBlob json = collection.Blobs.Single(pair => pair.Key == TypeTreeManifest.BlobName).Value as TpkJsonBlob
+            ?? throw new InvalidDataException("Missing version manifest.");
+        TypeTreeManifest manifest = System.Text.Json.JsonSerializer.Deserialize<TypeTreeManifest>(json.Text)
+            ?? throw new InvalidDataException("Empty version manifest.");
+        if (manifest.FormatVersion != 1)
+            throw new InvalidDataException("Upgrade expects format 1, not an already upgraded or unknown schema.");
+        List<LineageSource> sources = ReadLineageSources(dumpRoot, ReadEngineSnapshots(dumpRoot));
+        foreach (TypeTreeManifest.LineageEntry entry in manifest.Lineages)
+        {
+            if (!string.IsNullOrEmpty(entry.UnityNames))
+                throw new InvalidDataException("A format-1 manifest must not claim a format-2 vocabulary.");
+            LineageSource source = sources.Single(lineage => lineage.Key == entry.Key);
+            List<Snapshot> chain = [.. source.EngineChain, .. source.GameChain];
+            if (chain.Count != entry.Versions.Count || chain.Where((snapshot, i) =>
+                    snapshot.VersionKey != entry.Versions[i].Key ||
+                    snapshot.EngineVersion.ToString() != entry.Versions[i].Engine).Any())
+                throw new InvalidDataException($"Dump chain differs from accepted lineage {entry.Key}.");
+            entry.UnityNames = entry.Key + UnityNamesSuffix;
+            if (collection.Blobs.Any(pair => pair.Key == entry.UnityNames))
+                throw new InvalidDataException($"Unexpected pre-existing original-name blob {entry.UnityNames}.");
+            collection.Add(entry.UnityNames, BuildLineageBlob(chain, source.EngineChain.Count));
+        }
+        manifest.FormatVersion = TypeTreeManifest.CurrentFormatVersion;
+        json.Text = manifest.ToJson();
+        // Exercise the production schema validator, including its version gate.
+        TypeTreeManifest.FromJson(json.Text);
+        TpkFile.FromBlob(collection, TpkCompressionType.Brotli).WriteToFile(outputPath);
+        Console.WriteLine($"TYPE_TREE_UPGRADE_PASS lineages={manifest.Lineages.Count} output={outputPath}");
     }
 
 

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <DefineConstants>$(DefineConstants);RURI_TPK_UPGRADE_ONLY</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="AssetRipper.Tpk" Version="2.0.0" />
+    <PackageReference Include="AssetRipper.Tpk.TypeTrees.Json" Version="2.0.0" />
+    <Compile Include="../../Ruri.Tpk/Pipeline/TypeTreeTpkBuilder.cs" Link="TypeTreeTpkBuilder.cs" />
+    <Compile Include="../../Ruri.Hook/Core/VersionKey.cs" Link="VersionKey.cs" />
+    <Compile Include="../../Ruri.RipperHook/Core/CustomEngineType.cs" Link="CustomEngineType.cs" />
+    <Compile Include="../../Ruri.RipperHook/Core/TypeTree/TypeTreeManifest.cs" Link="TypeTreeManifest.cs" />
+    <Compile Include="../../Ruri.RipperHook/Core/TypeTree/TypeTreeOrdinal.cs" Link="TypeTreeOrdinal.cs" />
+  </ItemGroup>
+</Project>

@@ -9,6 +9,11 @@ bin
 *.user
 .idea
 **/build/
+# The minimal TypeTree upgrader is source, not generated build output.
+!Source/Build/
+!Source/Build/UpgradeTypeTree/
+!Source/Build/UpgradeTypeTree/*.cs
+!Source/Build/UpgradeTypeTree/*.csproj
 .vscode
 *.blend1
 *.zip
