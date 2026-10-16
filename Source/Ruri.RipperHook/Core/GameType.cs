@@ -29,7 +29,6 @@ public enum GameType
     StarRail,
     PunishingGrayRaven,
     AzurPromilia,
-    ExAstris,
     Koikatu,
     KoikatsuSunshine,
     HoneyCome,

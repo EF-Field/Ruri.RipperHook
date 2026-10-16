@@ -4,7 +4,6 @@ public enum CustomEngineType : byte
     StarRail = 2,
     ZenlessZoneZero = 3,
 
-    ExAstris = 4,
     Endfield = 5,
     UnrealEngine = 6,
 
