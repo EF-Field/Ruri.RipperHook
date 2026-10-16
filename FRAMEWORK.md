@@ -179,16 +179,17 @@ ExportHandlerHook.Register(new AssetProcessorRegistration
 
 ## 11. 运行时类型树（`RuriTypeTree.tpk`）
 
-游戏的 Unity 类型模型是**数据**不是生成 assembly：`Source/Ruri.RipperHook/Libraries/RuriTypeTree.tpk`（0.15 MB，`EmbeddedResource`），由 `Core.TypeTree` 运行时解释直接读进 stock `AssetRipper.SourceGenerated` 对象。（旧方案是跑 AssemblyDumper 60+ pass 生成 53 MB 孪生 DLL + 逐资产 deep-copy。）
+游戏的 Unity 类型模型是**数据**不是生成 assembly：`Source/Ruri.GameHook/Unity/TypeTree/RuriTypeTree.tpk`（~0.2 MB，私有子模块里，`EmbeddedResource` 逻辑名 `RuriTypeTree.tpk`），由 `Core.TypeTree` 运行时解释直接读进 stock `AssetRipper.SourceGenerated` 对象。（旧方案是跑 AssemblyDumper 60+ pass 生成 53 MB 孪生 DLL + 逐资产 deep-copy。）
 
 | 部件 | 角色 |
 |---|---|
-| `Source/Ruri.Tpk` | 打包器：TypeTree JSON 输出目录 → `RuriTypeTree.tpk` |
+| `Source/Ruri.Tpk` | 打包器：分叉引擎 dump 根（`<lineage>/<gamever>/info.json` + `Common/` 引擎锚点）→ `RuriTypeTree.tpk`；`--drift` 对官方 dump 出偏差报告与 `[TypeTreePostRead]` 回填桩 |
 | `Core.TypeTree` | 解释器：`TypeTreeDatabase` 载 tpk，`TypeTreeReadPlan` 为每个 (class, 引擎版本, AR 类型) 编译缓存读取计划 |
 
 - **读取语义真源**（改之前必读）：`AssemblyDumper` 的 `Pass100_FillReadMethods`（节点分派/count-then-loop/`Capacity` 收缩/align 位置）、`Pass015_AddFields`（字段名=消毒后节点名）、`Pass002_RenameSubnodes`（只有两处影响字节：`ValidNameGenerator.GetValidFieldName`、`ChangeStringToUtf8String` 把 align 从内层 `Array` 抬到 string 节点）。
 - **绑定**：AR 字段名 = 消毒后节点名（`m_SubMeshes`、`m_MeshMetrics_0_`），可见性 `internal`，引用型字段 ctor 已预分配 → 计划直接绑字段，`DynamicMethod` 访问器避免基元装箱。stock 类没有对应字段的节点按树结构消费掉字节。
-- **打包**：`dotnet build Source/Ruri.Tpk/Ruri.Tpk.csproj -c Debug` 再跑 `…/Source/0Bins/Debug/Ruri.Tpk.exe`（无参 ⇒ 输入 `D:\Ruri\Git\FractalTools\TypeTree\output`，输出 `Libraries/RuriTypeTree.tpk`）。迭代可用 `RURI_TYPE_TREE_TPK` 指向别的 tpk。
+- **打包**：`dotnet build Source/Ruri.Tpk/Ruri.Tpk.csproj -c Debug` 再跑 `…/Source/0Bins/Debug/Ruri.Tpk.exe`（无参 ⇒ 输入 `D:\Ruri\Git\FractalTools\TypeTree`，输出 `Source/Ruri.GameHook/Unity/TypeTree/RuriTypeTree.tpk`，整趟约 15 s）。新游戏版本的 dump 目录必须先在 dump 根里，否则该版本 hook 初始化抛 `does not declare version`；打包后再编 Release（嵌入资源）。迭代可用 `RURI_TYPE_TREE_TPK` 指向别的 tpk。
+- **偏差报告**：`Ruri.Tpk.exe --drift [<dump 根>] [<输出目录>]`（联网取官方 dump）→ `typetree-drift.md` + `stubs/`；`First` 列 = 该偏差首次出现的游戏版本，也就是 `[Since]` 该写的版本；一个类有偏差却不在该版本 hook 的 `[TypeTreeHook]` 列表里，就会被 stock 布局读错（表现：`Read X but expected Y for asset type …`）。
 
 **tpk 表达不了的三类偏差**（Unity 类型树无条件，每节点必序列化）—— 都是 `[Since]` 竞争解析的 capability，禁在共享代码加游戏分支：
 
@@ -198,11 +199,15 @@ ExportHandlerHook.Register(new AssetProcessorRegistration
 | `[TypeTreeValueFix(classID, nodePath)]` | 值改写 | Endfield `m_MeshCompression==4` 归一成 0 |
 | `[TypeTreePostRead(classID, Slot, Captures=[...])]` | 读后解码 | ACL 解压、`m_TOSData`→CRC32→`m_TOS`、shader blob 上提 |
 
+第四种不在 capability 里、挂在**hook 类**上（和 `[TypeTreeHook]` 同处）：`[TypeTreeRaw(classID)]` —— 该版本的引擎在树之后还写了树没有的数据（例：着色器类在最后一个 vector 之后按元素追加一份 `StreamingInfo`，无计数前缀），任何按树的读取都停不到对象末尾。`TypeTreeFallbackHook.TryMakeFromTpk` 对这类答 false，AR 保留字节（`UnknownObject.RawData`），由认领它的解码器自己读；不会再有 `Read X but expected Y`。
+
+**fork 类（stock 没有生成类型、AR 走 `TypeTreeObject`）**：tpk 只存发布树，`TryMakeFromTpk` 把它同时当编辑树交出去，而 AR 的双结构对象会把发布树读出的值逐字段 `CopyValues` 到编辑结构，这份拷贝**没有数组的数组的分支**（`NotImplementedException`）。`TypeTreeFallbackHook.CreateObject` 因此在两棵树相等时只建单结构对象；不相等才走 AR 原来的双结构。
+
 stock 类无处安放的私有节点在 `Captures` 声明后捕获成 `TypeTreeValue`（标量/字节数组/序列/结构），由 gate 与 post-read 经 `TypeTreeReadContext` 取用；没声明的只消费字节。序列里的节点每个元素读一次：`Find` 给最后一次，`FindAll` 按读取顺序给全部，每条带读它时所在的 stock 实例（`TypeTreeCapture.Owner`），post-read 据此把值挂回对应对象（例：每个程序 `m_CommonParameters` 的 `m_DescriptorSetParams`）。路径 = 从类根起、消毒后节点名以 `/` 连（`m_MuscleClip/m_Clip/m_Data/m_DenseClip/m_ACLArray`）。
 
 **输入数据集**
 - `D:\Ruri\Git\FractalTools\TypeTreeDumps` —— 官方 dump，1384 个版本，`InfoJson/<ver>.json`。规范真源。
-- `D:\Ruri\Git\FractalTools\TypeTree` —— 分叉引擎树。文件夹按 `CustomEngineType` id 命名（`1`=Houkai、`2`=StarRail、`5`=Endfield），每个 `<gamever>/info.json`；`RazTreeConverter.py` → 扁平 `output/`（`{maj}.{min}.{build}x{id}`，`x`⇒`Experimental`，`TypeNumber`=引擎 id）+ 拷 `Common/*.json`。**`output/` 是产物且 gitignore；`Common/` + `1,2,5/` 才是真源 —— 「补全数据集」= 填 `Common/`。**
+- `D:\Ruri\Git\FractalTools\TypeTree` —— 分叉引擎树，**`Ruri.Tpk` 的直接输入**。文件夹按 `CustomEngineType` id 命名（现存 `5`=Endfield），每个 `<gamever>/info.json`；`Common/*.json` 是引擎锚点。`output/` 是旧流程残留，打包器与偏差报告都跳过它。**`Common/` + `<lineage>/` 才是真源 —— 「补全数据集」= 填 `Common/`。**
 - `Core/CustomEngineType.cs` —— 引擎→id，存进版本 `TypeNumber`（byte ≤255）。
 
 **版本模型**
