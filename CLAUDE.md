@@ -1,5 +1,17 @@
 # Ruri-RipperHook — 内核约束(唯一常驻)
 
+## Endfield fork routing (2026-10-17)
+
+- `Source/Ruri.Hook` is the public, in-tree AOP framework. Preserve it.
+- The upstream private `Source/Ruri.GameHook` submodule is removed in this fork.
+  Its Unity/Unreal source globs and embedded type-tree input are removed too.
+- Private game adaptation is composed only from `Source/Endfield-GameHook`
+  through the explicit `UseEndfieldGameHook` profile. PureRelease stays public.
+- `Ruri.Tpk` defaults to an output beside the tool, never to an accepted private
+  pack. Older upstream examples below naming Ruri.GameHook describe the upstream
+  layout, not a dependency to restore in this fork.
+- Checkpoint locally; push only at the user's explicit request.
+
 > 框架事实/流水线/坑表 = [FRAMEWORK.md](FRAMEWORK.md)(写或调 hook 前读那份,不是这份) · UE 符号真值矩阵 = [Source/Ruri.ShaderDecompiler/UE_SYMBOL_SOURCES.md](Source/Ruri.ShaderDecompiler/UE_SYMBOL_SOURCES.md)。
 > 通用工程律 = skill `ruri-engineering-discipline`(写码/重构/移植前先过)。规则与用户指令冲突或规则本身错 → 先改本文,再写代码。带真实姓名的本机路径(`\Users\<人名>\`)禁止记录并提交,通用账户名不在此列。
 > 定位:`RuriRipperImporter`(Blender 插件)的上游数据管线 —— 通用跨引擎资产格式转换工具链;对外描述中立技术化,各来源的容器格式适配住 `Source/Ruri.GameHook` 私有子模块,不进对外描述。

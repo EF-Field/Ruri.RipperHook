@@ -75,6 +75,7 @@ public abstract class RipperHookCommon : RuriHook
         }
 
         HookClasses(classIds, targetVersion);
+        HookUtils.TypeTreeFallbackHook.TypeTreeFallbackHook.KeepRaw(type.GetCustomAttributes<TypeTreeRawAttribute>().Select(a => a.ClassID));
     }
 
     protected virtual TypeTreeVersion GetTargetVersion(RipperHookAttribute attr) => default;

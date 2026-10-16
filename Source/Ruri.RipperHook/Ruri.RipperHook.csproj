@@ -19,15 +19,7 @@
 		<DefineConstants>$(DefineConstants);TRACE;RURI_PURE_RELEASE</DefineConstants>
 	</PropertyGroup>
 
-	<!-- The per-source container adapters, out of the private Ruri.GameHook submodule. That
-	     submodule is split by ENGINE because an engine's half belongs to whichever assembly can
-	     read it: the Unity half compiles into this kernel, which needs nothing beyond the
-	     framework to read it, while the Unreal half compiles into Ruri.FModelHook, the only
-	     project that may reference CUE4Parse. Included rather than removed, so a PureRelease
-	     build simply never names them. -->
-	<ItemGroup Condition="'$(PureRelease)' != 'true' and '$(UseEndfieldGameHook)' != 'true'">
-		<Compile Include="..\Ruri.GameHook\Unity\**\*.cs" Link="Ruri.GameHook\Unity\%(RecursiveDir)%(Filename)%(Extension)" />
-	</ItemGroup>
+	<!-- Private adapters are composed only through the explicit Endfield profile below. -->
 
 	<ItemGroup>
 		<PackageReference Include="AsmResolver.DotNet" Version="6.0.1" />
@@ -90,14 +82,7 @@
 		<ProjectReference Include="..\Ruri.ACL\Ruri.ACL.csproj" />
 	</ItemGroup>
 
-	<!-- The game type trees, interpreted at runtime by Ruri.RipperHook.Core.TypeTree. They live with
-	     the game hooks they describe, so PureRelease leaves them unnamed along with the rest of that
-	     tree (see the Ruri.GameHook include above). Rebuild with the Ruri.Tpk project. -->
-	<ItemGroup Condition="'$(PureRelease)' != 'true' and '$(UseEndfieldGameHook)' != 'true'">
-		<EmbeddedResource Include="..\Ruri.GameHook\Unity\TypeTree\RuriTypeTree.tpk">
-			<LogicalName>RuriTypeTree.tpk</LogicalName>
-		</EmbeddedResource>
-	</ItemGroup>
+	<!-- The private profile embeds its own type-tree pack via Integration/Statement.targets. -->
 
 	<!-- Unity's built-in engine resources, straight from the Tpk repo's own CI (the same artifact
 	     AssetRipper.AssemblyDumper.Downloader fetches). It replaces the copy frozen into the published

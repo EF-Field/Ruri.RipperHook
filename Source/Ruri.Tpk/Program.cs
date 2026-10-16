@@ -71,7 +71,7 @@ internal static class Program
     }
 
     private static string DefaultOutputPath() =>
-        Path.Combine(RepoLayout.HookSourceRoot, "TypeTree", TpkFileName);
+        Path.Combine(AppContext.BaseDirectory, "generated", TpkFileName);
 
     private static string ResolveDumpRoot(string path)
     {

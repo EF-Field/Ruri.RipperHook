@@ -17,10 +17,14 @@ KawakazeNotFound/RuriRipperImporter (public host)
 
 The private repository is a pinned source submodule, not an independent loaded
 assembly. Public history contains its URL and Git commit ID, not its files.
-The original upstream `Source/Ruri.GameHook` gitlink is retained for upstream
-compatibility; this fork's private kernel profile does not compile that adapter.
-Initialize only the submodules needed for the selected profile, not all private
-upstream dependencies recursively.
+The upstream private `Source/Ruri.GameHook` gitlink and its Unity/Unreal build
+inputs are removed. This fork uses only `Source/Endfield-GameHook` for its private
+adapter; `Source/Ruri.Hook` is the public hook framework and remains in-tree.
+Initialize only the submodules needed for the selected profile.
+
+`Ruri.Tpk` scans the private adapter's `Endfield` directory for drift handling.
+Its default output is `generated/RuriTypeTree.tpk` beside the tool executable,
+not a published private runtime pack. Supply an explicit output path when needed.
 
 ## Tested snapshot build (.NET 10, Windows)
 
