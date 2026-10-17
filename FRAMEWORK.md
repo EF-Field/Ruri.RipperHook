@@ -18,9 +18,9 @@ Ruri-RipperHook 框架事实:只记与常识相反或读代码得不到的约束
 17. chunk 条目名与 CAB 名不能互转,名字索引须记条目名;大游戏必须 bundle-granular 加载(GameBundleHook.LoadIncludeFile 在解密前按条目名过滤,否则整个 .chk 解出 OOM)。
 18. CabSelection 的谓词只约束种子不约束闭包,按分区扫描时每分区克隆一份 Regex(共享实例并发会退化成分配风暴)。
 19. 材质符号以 .usmap 为硬前置;hash→材质主桥是内联 FShaderMapBase.ResourceHash(CookedShaderMapIdHash 是另一个 ID 空间),并行 LoadPackage 下 CUE4Parse 吞反序列化异常使桥非确定,空包须单线程重试。
-20. native 依赖只来自 NuGet,禁往 <bin>/Tools/ 拷旧 native(过期的 dxil-only dll 会遮蔽新版,DXBC 报 dxil_spv_parse_dxil_blob failed -4)。
+20. native 依赖只来自 NuGet,禁往 {bin}/Tools/ 拷旧 native(过期的 dxil-only dll 会遮蔽新版,DXBC 报 dxil_spv_parse_dxil_blob failed -4)。
 21. UE 只有一个解码器 UnrealEngine_4.0 按引擎家族认领,UE 包不转 Unity 资产而以 unreal.* 数据集直出 Blender,通用读取代码不许出现游戏名。
-22. FModelHook 模块由构建写 Modules/<程序集名>.module 自声明、Bootstrap.LoadDeclaredModules 开机加载,须自带包(CopyLocalLockFileAssemblies+RuntimeIdentifier=win-x64),System.Numerics.Tensors 必须钉到 CUE4Parse 的版本,否则解密末步 FileLoadException 被吞成"档案没开"。
+22. FModelHook 模块由构建写 Modules/{程序集名}.module 自声明、Bootstrap.LoadDeclaredModules 开机加载,须自带包(CopyLocalLockFileAssemblies+RuntimeIdentifier=win-x64),System.Numerics.Tensors 必须钉到 CUE4Parse 的版本,否则解密末步 FileLoadException 被吞成"档案没开"。
 23. UE 引擎版本读 exe 里 Build.version 的 UTF-16 字面量(不读版本资源),缺失即标 unreal.engine required 并拒绝挂载;读取参数全是 unreal.settings.schema 声明的源选项,代码不认识任何选项名,必填门判已 Apply 的生效态而非输入框。
 24. 标题差异(容器方言、key/usmap 发布端点、认标题的文件标记)由 UnrealTitles 数据行声明,禁用 FModel 的端点读取器(拖进 WPF,无头下异常被吞成"没有 key")而用自带 UnrealKeyring。
 25. 工作室把引擎改到家族答不出时由标题发布同名数据集顶掉(UnrealTitleDatasets),认领必须在内核 Session.Opened 事件里,且只认领当前安装的标题发布。
@@ -31,5 +31,5 @@ Ruri-RipperHook 框架事实:只记与常识相反或读代码得不到的约束
 30. 贴图 BC5 法线必须补回蓝通道,unreal.textures 并行编码前须先 WarmEncoder(fpng 静态构造非线程安全)。
 31. ACL 解码吐长度约 0.9983 的非单位四元数,须先归一化再对半球,否则静止长 clip 被读成抖动写成百万级键;曲线抽稀容差取 ACL 编码的 ErrorThreshold 乘 unreal.animation.tolerance。
 32. 材质参数按引擎声明的 kind 布局(CachedLayouts)读,EMaterialParameterType 不是 UENUM 不能从 schema 推序;语义角色只从编译后 base pass shader 经 SPIR-V 污点反推(MaterialSemanticsResolver),Blender 侧不得再按名猜图。
-33. usmap 来自 exe 旁的 pdb:Ruri.Tpk --unreal-reflection <exe> [out.usmap],再 Ruri.Tpk --unreal <usmap> 直出自定义引擎 tpk,别注入 UnrealMappingsDumper(DebugGame 会崩)。
+33. usmap 来自 exe 旁的 pdb:Ruri.Tpk --unreal-reflection {exe} [out.usmap],再 Ruri.Tpk --unreal {usmap} 直出自定义引擎 tpk,别注入 UnrealMappingsDumper(DebugGame 会崩)。
 34. Git Bash 传 /Game/... 对象路径须 MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*',否则被改写成 C:/Program Files/Git/Game/... 而数据集静默返回 0 行。
