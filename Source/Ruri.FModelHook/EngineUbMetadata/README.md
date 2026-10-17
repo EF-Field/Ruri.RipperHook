@@ -5,22 +5,24 @@ of UE engine-defined uniform buffers (`View`, `OpaqueBasePass`,
 `LumenCardScene`, `VirtualShadowMap`, `LocalVF`, etc.) which cannot be
 recovered from cooked shipping data on UE 5.1 (all SMs) or UE 5.4 SM5.
 
-See [`UE_SYMBOL_SOURCES.md`](../../../../../../../Source/Ruri.ShaderDecompiler/UE_SYMBOL_SOURCES.md)
-for the full closed-world analysis and why this folder exists.
+The seeds are generated from engine source by `Ruri.UEShaderTpkDumper`
+(`Source/Ruri.UEShaderTpkDumper`); the closed-world limits they work around
+are summarized in `Source/Ruri.ShaderDecompiler/CLAUDE.md`.
 
 ## Folder + filename convention
 
-Folder names **must match FModel's `EGame` enum names** exactly so the
-loader can auto-select the right folder for the cooked game it's
+The dumper writes one folder per engine version (`4.26.2/`, `5.1.1/`, ...).
+A folder named after a FModel `EGame` enum member is an override layer on top
+of that, so the loader can auto-select it for the cooked game it's
 decompiling. Example layout:
 
 ```
 EngineUbMetadata/
-    GAME_UE5_1/                              # base UE 5.1 layouts (default for any 5.1 game)
+    5.1.1/                                   # dumper output for UE 5.1.1
         View_13BB15AA_MetaData.json
         OpaqueBasePass_09280EDD_MetaData.json
         ...
-    GAME_UE5_4/                              # base UE 5.4 layouts
+    5.4.4/                                   # dumper output for UE 5.4.4
         View_<hash5.4>_MetaData.json
         ...
     GAME_InfinityNikki/                      # game-specific override (UE 5.4 fork)
@@ -31,15 +33,17 @@ EngineUbMetadata/
 
 **Loader lookup order** when decompiling a game:
 1. The game-specific folder (e.g. `GAME_InfinityNikki/`) if present, takes precedence.
-2. The base UE folder (e.g. `GAME_UE5_4/`) for the same major.minor.
-3. Other folders (recursive scan), keyed only by `(UBName, LayoutHash)`.
+2. The base UE folder `GAME_UE{major}_{minor}/` for the same major.minor, if present.
+3. Version folders named `{major}.{minor}` or `{major}.{minor}.*` (the dumper's output).
+4. If none of the above exist, the whole directory (recursive scan), keyed only by `(UBName, LayoutHash)`.
+
+An entry loaded from an earlier folder is not replaced by the same `(UBName, LayoutHash)` from a later one.
 
 Using FModel's canonical EGame names (instead of free-form "UE5.1.1")
 guarantees that game-specific custom engine forks (e.g. modded UEs that
 ship with custom UB members) get matched on game ID alone — no string
-matching gymnastics. The loader scans recursively so folders outside
-the EGame convention still work; they just don't get the auto-priority
-boost.
+matching gymnastics. Every folder is scanned recursively; `_ShaderType/`
+subfolders hold ShaderType seeds and are skipped.
 
 **Build copy semantics**: seed JSONs are copied to
 `<exeDir>/EngineUbMetadata/<UEVersion>/` on build **only when the
@@ -52,7 +56,7 @@ local symbol overrides. To force a refresh, delete the deployed file
 ### Filename convention
 
 ```
-<UBName>_<LayoutHash:08x>_MetaData.json
+<UBName>_<LayoutHash:X8>_MetaData.json
 ```
 
 Examples:
@@ -64,8 +68,9 @@ LumenCardScene_19D918C8_MetaData.json
 
 - `<UBName>` is the uniform-buffer name UE writes into the `'u'`
   optional-data block of every cooked shader (`View`, `Material`, etc.).
-- `<LayoutHash:08x>` is `FRHIUniformBufferLayoutInitializer::ComputeHash()`
-  rendered as 8 lowercase hex digits (no `0x` prefix). The decompiler
+- `<LayoutHash:X8>` is `FRHIUniformBufferLayoutInitializer::ComputeHash()`
+  rendered as 8 uppercase hex digits (no `0x` prefix; the JSON's own
+  `LayoutHash` field keeps it). The decompiler
   reads this hash from `FBaseShaderResourceTable.ResourceTableLayoutHashes[i]`
   in each cooked shader's SRT chunk and looks up
   `(UBName, ResourceTableLayoutHashes[i])` here.
@@ -74,44 +79,52 @@ LumenCardScene_19D918C8_MetaData.json
 
 ```jsonc
 {
-  "name": "View",
-  "engineVersion": "5.4.4",                                       // docs only
-  "engineSource": "Engine/.../SceneView.h:1016",                   // docs only
-  "layoutHash": "0x3F8A12C5",                                      // discriminator
-  "constantBufferSize": 3776,                                       // cross-check
-  "bindingFlags": "Shader",                                         // docs only
-  "members": [
-    { "offset":   0, "name": "TranslatedWorldToClip",  "type": "Float4x4" },
-    { "offset":  64, "name": "WorldToClip",             "type": "Float4x4" },
-    { "offset": 128, "name": "TranslatedWorldToView",   "type": "Float4x4" },
-    // ...
+  "Name": "View",
+  "EngineVersion": "5.4.4",                                       // docs only
+  "EngineSource": "Engine/.../SceneView.h:1016",                   // docs only
+  "LayoutHash": "0x3F8A12C5",                                      // discriminator
+  "HashFormula": "SizeAndStaticSlot",                              // which formula the dumper read, see below
+  "BindingFlags": "Shader",                                        // docs only
+  "UsageFlags": "",                                                // docs only
+  "ConstantBuffer": {                                              // numeric members, Unity ConstantBufferParameter shape
+    "Name": "View", "NameIndex": -1, "Size": 3776, "IsPartialCB": false,
+    "MatrixParameters": [
+      { "Name": "TranslatedWorldToClip", "NameIndex": -1, "Index": 0, "ArraySize": 0,
+        "Type": "Float", "RowCount": 4, "ColumnCount": 4, "IsMatrix": true }
+    ],
+    "VectorParameters": [
+      { "Name": "ViewTilePosition", "NameIndex": -1, "Index": 960, "ArraySize": 0,
+        "Type": "Float", "RowCount": 3, "ColumnCount": 1, "IsMatrix": false }
+    ],
+    "StructParameters": []
+  },
+  "Textures": [
+    { "Name": "VolumetricLightmapIndirectionTexture", "NameIndex": -1, "Index": 2,
+      "SamplerIndex": -1, "MultiSampled": false, "Dim": 2 }
   ],
-  "resources": [
-    { "index": 0,  "offset": 4096, "name": "MaterialTextureBilinearWrapedSampler", "type": "UBMT_SAMPLER" },
-    { "index": 45, "offset": 4136, "name": "PerlinNoise3DTexture",                 "type": "UBMT_TEXTURE" }
-    // ...
+  "Samplers": [
+    { "Name": "MaterialTextureBilinearWrapedSampler", "Sampler": 0, "BindPoint": 0 }
+  ],
+  "Buffers": [],
+  "UAVs": [],
+  "Resources": [                                                   // every resource-typed member, declaration order
+    { "Index": 0, "Offset": 4088, "Name": "MaterialTextureBilinearWrapedSampler",
+      "UbmtType": "UBMT_SAMPLER", "ShaderType": "SamplerState" }
   ]
 }
 ```
 
-### Numeric member types
+### Numeric parameter types
 
-`type` is matched case-insensitively. Recognized:
-
-| `type` | Means |
-| --- | --- |
-| `Float` / `Float2` / `Float3` / `Float4` | float scalar / vec2 / vec3 / vec4 |
-| `Int` / `Int2..4` | int scalar / vector |
-| `UInt` / `UInt2..4` | uint scalar / vector |
-| `Bool` / `Bool2..4` | bool scalar / vector (HLSL cbuffer-encoded as int) |
-| `Half` / `Half2..4` | half scalar / vector |
-| `Float4x4`, `Float3x3`, `Float3x4`, `Float4x3` | matrix forms |
-
-Anything else is silently skipped (use anonymous offset placeholder downstream).
+`Type` is the scalar kind (`Float`, `Int`, `UInt`, `Bool`, `Half`, `Short`);
+`RowCount` x `ColumnCount` gives the vector or matrix shape, and `IsMatrix`
+puts the member in `MatrixParameters` instead of `VectorParameters`. `Index`
+is the member's byte offset in the constant buffer and `ArraySize` 0 means it
+is not an array. A `Bool` is cbuffer-encoded as int.
 
 ### Resource types
 
-`type` should be one of the `EUniformBufferBaseType` enum names:
+`UbmtType` should be one of the `EUniformBufferBaseType` enum names:
 - `UBMT_TEXTURE` — bound to `register(t#)`
 - `UBMT_SRV` — bound to `register(t#)`
 - `UBMT_SAMPLER` — bound to `register(s#)`
@@ -120,10 +133,14 @@ Anything else is silently skipped (use anonymous offset placeholder downstream).
   for our purposes (the SRT decoder already knows the register class
   from the SRT map type).
 
-`index` MUST match `FRHIResourceTableEntry::Unpack(token).ResourceIndex`
+`Index` MUST match `FRHIResourceTableEntry::Unpack(token).ResourceIndex`
 as decoded from the cooked SRT for this UB. It is **not** the bind
 register — it is the index into `FRHIUniformBufferLayoutInitializer.Resources[]`
 that the engine source declares.
+
+`ShaderType` is the HLSL type name (e.g. `SamplerState`). `Textures`,
+`Samplers`, `Buffers` and `UAVs` may be left empty: the loader derives them
+from `Resources`.
 
 ## How the hash is computed (so you can derive a file's name from UE source)
 
@@ -148,23 +165,29 @@ Inputs:
 - `(StaticSlot != INVALID)` bit
 - For each entry in `Resources[]`: `MemberOffset`, `MemberType`
 
+Older engines (4.x) put the buffer's static-slot index into the low byte of
+the hash; the slot is assigned at engine start and no source states it, so
+the dumper records which formula it read out of that engine's source
+(`HashFormula`) and the loader ignores the low byte for `SizeAndStaticSlot`
+seeds.
+
 Member NAMES are NOT in the hash — same shape = same hash regardless of
 naming. That's why one file can serve multiple engine versions when the
 layout shape happens to match.
 
 ## Generating files
 
-For a chosen UB on a given engine version:
+Run `Ruri.UEShaderTpkDumper` on an engine source tree:
 
-1. Find the `BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(...)` block in engine
-   source (e.g. `FViewUniformShaderParameters` at `SceneView.h:1016` in
-   5.4.4).
-2. Walk each `SHADER_PARAMETER*` macro, computing the offset per UE's
-   alignment rules (see `ShaderParameterMetadataBuilder.h`).
-3. Collect every resource-typed member into `Resources[]` in declaration
-   order (only `IsShaderParameterTypeForUniformBufferLayout()` types).
-4. Compute the hash per the formula above.
-5. Emit the JSON.
+```
+dotnet run --project Source/Ruri.UEShaderTpkDumper -- --ue-root <dir> --filter "5\.4"
+```
+
+For every `BEGIN_*_STRUCT` block it walks each `SHADER_PARAMETER*` macro with
+the engine's own alignment rules, collects every resource-typed member into
+`Resources` in declaration order, computes the hash with the formula it read
+out of that engine's source, and writes the JSON under
+`EngineUbMetadata/<X.Y.Z>/`. Seeds are not written by hand.
 
 When unsure of the hash, run the decompiler once with `RURI_SRT_DEBUG=1`
 and grep the stderr for `[SRT] LayoutHashes ...` — the value next to the

@@ -4,7 +4,7 @@
 
 ## 下游:面向 Blender 的技术美术管线
 
-本仓库产出的标准 Unity YAML,是 [RuriRipperImporter](https://github.com/ShiyumeMeguri/RuriRipperImporter) Blender 插件的直接输入——该插件零依赖解析 Unity 原生 `Force Text` 序列化文本,把网格、真实骨架、材质与动画 clip 原样重建进 Blender,不经过 FBX 转换、不重新绑骨、不丢顶点流。这条管线服务于角色建模、绑骨、MMD 风格动画等 3D 内容创作与技术美术研究工作流:Ruri-RipperHook 负责让来源各异的资产最终都能落成同一份干净的 Unity 项目结构,Blender 插件只需要认识"标准 Unity YAML"这一种形态。
+本仓库的构建产物是 [RuriRipperImporter](https://github.com/ShiyumeMeguri/RuriRipperImporter) Blender 插件的直接依赖——插件指向游戏安装目录,经 cabmap 浏览资源并在内存里直接导入,把网格、真实骨架、材质与动画 clip 原样重建进 Blender,不经过 FBX 转换、不先导出 Unity 工程、不重新绑骨、不丢顶点流。这条管线服务于角色建模、绑骨、MMD 风格动画等 3D 内容创作与技术美术研究工作流:Ruri-RipperHook 负责让来源各异的资产最终都能落成同一种干净的 Unity 数据表示(UE 来源则以 `unreal.*` 数据集交付),Blender 插件只需要认识这一种形态。
 
 ## 架构定位
 
@@ -34,7 +34,7 @@ public class MyHook : RipperHookCommon
 
 启动期 `Bootstrap.ApplyHooks(config)` 会发现所有匹配当前配置的 Hook 类,调用其 `Initialize()`,完成 attribute 扫描与方法重定向注册。整个生命周期由 `Ruri.Hook` 维护,业务代码不直接持有 MonoMod 句柄。
 
-详细的 attribute 语义、AssetRipper 内部数据流、路径处理、自定义 processor 注入等,见 [FRAMEWORK.md](FRAMEWORK.md)。
+内核约束见 [CLAUDE.md](CLAUDE.md);框架事实与坑(hook 写法、AssetRipper 内部数据流、路径、processor 注入、类型树、CAB 映射、UE 读取等)见 [FRAMEWORK.md](FRAMEWORK.md)。
 
 ## 仓库结构
 
@@ -44,10 +44,13 @@ public class MyHook : RipperHookCommon
 | `Source/Ruri.RipperHook` | AssetRipper 主增强层。读取、导出、网格拆分、prefab 处理、路径修复等通用 Hook |
 | `Source/Ruri.RipperHook.GUI` | 图形界面入口(AssetRipper 流程) |
 | `Source/Ruri.RipperHook.CLI` | 命令行入口,headless 导出与 Hook 列表查询 |
-| `Source/Ruri.FModelHook` | FModel / UE 侧增强,shader bytecode 导出与统一 metadata 整理;`Ripper/` 是 UE 解码器模块——RipperHook 宿主(CLI `--module` / GUI 配置 `Modules` / Blender 首选项)按路径加载它,UE 包在内存里经内核的引擎中立构建器变成 Unity 资产。依赖方向:FModelHook → RipperHook,内核不引用 CUE4Parse |
+| `Source/Ruri.FModelHook` | FModel / UE 侧增强,shader bytecode 导出与统一 metadata 整理;`FModelHook/BlenderBridge/` 是 UE 解码器模块——RipperHook 宿主(CLI `--module` / GUI 配置 `Modules` / Blender 首选项)按路径或构建写下的 `Modules/*.module` 声明加载它,UE 包在内存里直接以 `unreal.*` 数据集交给 Blender 插件,不转 Unity 资产。依赖方向:FModelHook → RipperHook,内核不引用 CUE4Parse |
 | `Source/Ruri.FModelHook.GUI` | FModel 流程的图形界面入口 |
-| `Source/Ruri.ShaderDecompiler` | DX11 shader 反编译实现 |
+| `Source/Ruri.FModelHook.CLI` | FModel 流程的无头命令行入口,挂载游戏并导出 / 反编译 shader |
+| `Source/Ruri.ShaderDecompiler` | DXBC / DXIL / SPIR-V shader 反编译实现 |
 | `Source/Ruri.Tpk` | 把 TypeTree JSON 打包成 `RuriTypeTree.tpk`(Ruri.RipperHook 的内嵌资源);UE lane(`Unreal/`,与 Unity lane 隔离):`--unreal <usmap>` 把 UE 反射 schema 直出为自定义引擎 tpk |
+| `Source/Ruri.UEShaderTpkDumper` | 直接解析 UE 引擎源码,按引擎版本导出 uniform buffer 布局种子到 `Ruri.FModelHook/EngineUbMetadata` |
+| `Source/Ruri.ACL` | ACL 压缩动画数据的解码 |
 | `AssetRipper/`, `FModel/` | 上游 submodule,**只读冻结**,差异通过 Hook 注入而非直接修改 |
 
 ## 主要能力
@@ -56,8 +59,7 @@ public class MyHook : RipperHookCommon
 - **导出流程接管**:可插入自定义 `IAssetProcessor`、覆写 `ExportCollection` 的产物路径与命名、跳过冗余处理阶段
 - **结构与格式适配**:对 Unity Bundle / SerializedFile / VFS / 流式资源等的解析点提供 Hook 切入位
 - **Shader 链路**:metadata 补全、绑定信息组织、bytecode 反编译,以及朝 Unity shader 表示形态的转换
-- **跨工具链统一**:FModel / UE 侧的数据按需转换为 Unity YAML 或等价对象语义,复用 AssetRipper 后续工作流
-- **AssemblyDumper 集成**:从 metadata 生成结构定义,产物可被 AR 流程作为类型来源
+- **跨工具链统一**:FModel / UE 侧的数据不转 Unity 资产,以 `unreal.*` 数据集在内存里直接交给 Blender 插件
 - **GUI / CLI 双入口**:同一份 Hook 实现,GUI 用于交互式调试,CLI 用于批处理 / 脚本化导出 / 列表查询
 
 ## 适用场景
@@ -72,7 +74,8 @@ public class MyHook : RipperHookCommon
 
 | 操作 | 命令 / 路径 |
 |---|---|
-| 编译单个 Ruri 项目 | `dotnet build Source/Ruri.RipperHook/Ruri.RipperHook.csproj -c Debug --nologo` |
+| 编译 | `dotnet build -c Debug --nologo`(整个解决方案;两个读取器共用输出目录,单编内核会把共享包覆盖回较窄版本) |
+| 迭代时单编一个项目 | `dotnet build Source/Ruri.RipperHook/Ruri.RipperHook.csproj -c Debug --nologo`(交付前必须整编) |
 | GUI 入口 | `Ruri.RipperHook.GUI.exe` |
 | CLI 入口 | `Ruri.RipperHook.CLI.exe` |
 | 列出可用 Hook | `Ruri.RipperHook.CLI.exe --list-hooks` |
@@ -81,10 +84,6 @@ public class MyHook : RipperHookCommon
 游戏的 Unity 类型模型是运行时解释的 `RuriTypeTree.tpk`,不再有生成的 assembly;重打 tpk 用 `Ruri.Tpk`。
 
 Hot Reload 状态下偶发的 Hook 失效一般来自增量残留,重新触发编译可恢复。
-
-## Todo
-
-- 把 UE / FModel 侧的 Prefab / Model / Material / Shader 等主要数据转换为 Unity YAML 数据导出
 
 ## Special Thanks
 

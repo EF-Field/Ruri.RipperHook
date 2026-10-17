@@ -48,6 +48,13 @@ are walked for `*.h` / `*.cpp` / `*.inl`.
 * **Macro-table expansion**: `VIEW_UNIFORM_BUFFER_MEMBER_TABLE` etc.
   are recursively substituted into struct bodies before the layout
   walker sees them.
+* **ShaderType seeds**: the `LAYOUT_FIELD` members of every shader class,
+  emitted as seed JSONs next to the layouts.
+* **Hash-to-name indexes**: `_ShaderType`, `_VertexFactoryType` and
+  `_ShaderPipelineType` map `HashedName` to the source class name.
+* **Material uniform buffer recipe**: the `CreateBufferStruct` member order
+  and texture kinds of the engine version.
+* **Preshader opcode table**: the opcode enum of the engine version.
 
 ## Schema
 
@@ -70,9 +77,9 @@ UE 5.1.1 smoke test: 138/141 UBs found, 112 exact hash matches.
 | Macro-table expansion (single level)               | done   |
 | Macro-table expansion (deeper levels, View etc.)   | partial — 6/11 tables found |
 | SHADER_PARAMETER_STRUCT_INCLUDE recursive walk     | partial — recursion in place but registry lookup occasionally misses nested children |
-| ShaderType seed (LAYOUT_FIELD scan)                | pending |
-| Hash-to-name index emission                        | pending |
-| VertexFactoryType / ShaderPipelineType indexes     | pending |
+| ShaderType seed (LAYOUT_FIELD scan)                | done   |
+| Hash-to-name index emission                        | done   |
+| VertexFactoryType / ShaderPipelineType indexes     | done   |
 | USF-level loose-param scan (`_Globals` recovery)   | pending |
 | Runtime exact-version lookup (replace GAME_UE5_X)  | pending |
 
