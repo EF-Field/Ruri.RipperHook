@@ -10,7 +10,7 @@ internal static class Il2CppHelperNamer
 {
     private static ApplicationAnalysisContext _app;
     private static readonly Dictionary<ulong, string> _cache = new();
-    private static readonly Dictionary<ulong, bool> _reachesRaise = new();
+    private static readonly Dictionary<ulong, (bool Reaches, int Depth)> _reachesRaise = new();
     private static ulong _raiseA;
     private static ulong _raiseB;
     public static string TryGetName(ApplicationAnalysisContext app, ulong address)
@@ -41,6 +41,9 @@ internal static class Il2CppHelperNamer
         byte[] code = binary.ReadByteArrayAtRawAddress(raw, 96);
         if (code == null || code.Length == 0)
             return null;
+
+        if (NameByShape(app, code, address) is { } shaped)
+            return shaped;
 
         Decoder decoder = Decoder.Create(64, new ByteArrayCodeReader(code), address);
         ulong end = address + (ulong)code.Length;
@@ -103,6 +106,55 @@ internal static class Il2CppHelperNamer
         return null;
     }
 
+    /// <summary>The two guards the compiler emits ahead of nearly every use of an object, outlined into functions of
+    /// their own: the class initialiser's flag test and the null test. Each tests its argument and sends the failing
+    /// case to a block that does one thing -- run the initialiser, or call something that never returns.</summary>
+    private static string NameByShape(ApplicationAnalysisContext app, byte[] code, ulong address)
+    {
+        Decoder decoder = Decoder.Create(64, new ByteArrayCodeReader(code), address);
+        List<Instruction> head = new(4);
+        while (head.Count < 4)
+        {
+            decoder.Decode(out Instruction insn);
+            if (insn.IsInvalid)
+                break;
+            head.Add(insn);
+        }
+        int at = head.Count > 0 && head[0].Mnemonic == Mnemonic.Sub && head[0].Op0Register == Register.RSP ? 1 : 0;
+        if (head.Count <= at + 1)
+            return null;
+        Instruction test = head[at];
+        Instruction branch = head[at + 1];
+        if (branch.Mnemonic != Mnemonic.Je || branch.Op0Kind != OpKind.NearBranch64)
+            return null;
+        bool comparesFlag = test.Mnemonic == Mnemonic.Cmp && test.Op0Kind == OpKind.Memory
+            && test.MemoryBase == Register.RCX && test.MemoryIndex == Register.None
+            && test.Op1Kind is OpKind.Immediate8 or OpKind.Immediate8to32 or OpKind.Immediate8to64 && test.GetImmediate(1) == 0;
+        bool testsPointer = test.Mnemonic == Mnemonic.Test && test.Op0Register == Register.RCX && test.Op1Register == Register.RCX;
+        if (comparesFlag && FailureBlock(app, branch.NearBranchTarget, classInit: true))
+            return "il2cpp_class_init_check";
+        if (testsPointer && FailureBlock(app, branch.NearBranchTarget, classInit: false))
+            return "il2cpp_null_check";
+        return null;
+    }
+
+    private static bool FailureBlock(ApplicationAnalysisContext app, ulong target, bool classInit)
+    {
+        Il2CppBinary binary = app.Binary;
+        long raw = binary.MapVirtualAddressToRaw(target, false);
+        if (raw < 0)
+            return false;
+        byte[] bytes = binary.ReadByteArrayAtRawAddress(raw, 16);
+        Decoder decoder = Decoder.Create(64, new ByteArrayCodeReader(bytes), target);
+        decoder.Decode(out Instruction first);
+        decoder.Decode(out Instruction second);
+        if (first.Mnemonic is not (Mnemonic.Call or Mnemonic.Jmp) || first.Op0Kind != OpKind.NearBranch64)
+            return false;
+        return classInit
+            ? Il2CppAsmAnnotator.IsKeyFunction(app, first.NearBranchTarget, "class_init")
+            : second.Mnemonic == Mnemonic.Int3;
+    }
+
     private static bool IsRaise(ulong target)
         => (_raiseA != 0 && target == _raiseA) || (_raiseB != 0 && target == _raiseB);
 
@@ -120,9 +172,9 @@ internal static class Il2CppHelperNamer
     {
         if (depth <= 0)
             return false;
-        if (_reachesRaise.TryGetValue(addr, out bool cached))
-            return cached;
-        _reachesRaise[addr] = false;
+        if (_reachesRaise.TryGetValue(addr, out (bool Reaches, int Depth) cached) && (cached.Reaches || cached.Depth >= depth))
+            return cached.Reaches;
+        _reachesRaise[addr] = (false, 0);
         bool result = false;
         long raw = binary.MapVirtualAddressToRaw(addr, false);
         if (raw >= 0)
@@ -149,7 +201,7 @@ internal static class Il2CppHelperNamer
                 }
             }
         }
-        _reachesRaise[addr] = result;
+        _reachesRaise[addr] = (result, depth);
         return result;
     }
 

@@ -2,30 +2,29 @@ using AssetRipper.Assets;
 using AssetRipper.Processing;
 using AssetRipper.SourceGenerated;
 using AssetRipper.SourceGenerated.Classes.ClassID_1;
-using AssetRipper.SourceGenerated.Classes.ClassID_74;
 using AssetRipper.SourceGenerated.Classes.ClassID_90;
 using AssetRipper.SourceGenerated.Classes.ClassID_95;
 using AssetRipper.SourceGenerated.Extensions;
-using Ruri.RipperHook.BlenderBridge;
 using Ruri.RipperHook.CabMapping;
 using Ruri.RipperHook.BlenderBridge.Data;
 using Ruri.RipperHook.BlenderBridge.Tables;
-using System.Text.Json;
 
 namespace Ruri.RipperHook.BlenderBridge.Statements;
 
 /// <summary>
-/// Which rig a clip was authored on -- the measured answer, with no name guessing: every
-/// candidate Avatar's transform table is scored by how many of the clip's binding hashes it
-/// covers, a full cover ends the search, and the argmax wins otherwise. Candidates come in
-/// tiers that are only an ORDER (what the map can reach from the clip in two reverse hops
-/// then forward, then every archive carrying an Avatar, cheapest first); every tier faces
-/// the same coverage test. The HOST of that avatar is the prefab whose root Animator names
-/// exactly it -- a cutscene that merely stages the character carries the staged pose.
+/// Which rig a set of clip bindings was authored on -- the measured answer, with no name guessing: every
+/// candidate Avatar's transform table is scored by how many of the binding hashes it covers, a full cover
+/// ends the search, and the argmax wins otherwise. The bindings are the paths a clip statement states
+/// (a restored path or a hashed placeholder, either one is a hash), so the question is about exactly the
+/// clips a caller holds. Candidates come in tiers that are only an ORDER (what the map can reach from the
+/// archive the clips came from, then every archive carrying an Avatar, cheapest first). The HOST of that
+/// avatar is the prefab whose root Animator names exactly it -- a cutscene that merely stages the
+/// character carries the staged pose.
 /// </summary>
 public static class ClipSourceSkeleton
 {
     public const string SourceSkeletonId = "core.clip.source_skeleton";
+    public const string Paths = "paths";
     public const string Clip = "clip";
 
     private sealed record Scanned(string Cab, string Name, int DependencyCount, int TosSize, HashSet<uint> Crcs);
@@ -34,20 +33,27 @@ public static class ClipSourceSkeleton
 
     public static void Register()
     {
-        Datasets.Publish(SourceSkeletonId, DataRole.Binding, [DataParam.Text(Clip)],
-            "The avatar whose transform table covers the most of a clip's binding hashes, best first: the "
+        Datasets.Publish(SourceSkeletonId, DataRole.Binding,
+            [DataParam.List(Paths, required: true), DataParam.Text(Clip, required: false)],
+            "The avatar whose transform table covers the most of a clip's binding paths, best first: the "
             + "avatar's name, the archive it lives in, how many bindings it covers and the fraction, its table size, "
             + "and the prefab rooted on exactly that avatar -- the host to build the source rig from -- as a seed. "
-            + "clip is the archive or container path holding the clips.", Table);
+            + "paths are the bindings as core.statement.clips states them; clip is the archive or container path "
+            + "they came from and only decides which archives are tried first.", Table);
     }
 
     private static ColumnTable Table(DataRequest request)
     {
         CabTable map = request.Map;
-        string clipSeed = request.Text(Clip);
-        string clipCab = map.TryGetId(clipSeed, out _) ? clipSeed : CabMap.ResolveCabsForPaths(map, [clipSeed]).FirstOrDefault()
-            ?? throw new ArgumentException($"'{clipSeed}' is neither an archive nor a container path of the loaded map.");
-        HashSet<uint> crcs = BindingCrcs(map, clipCab, request.Cancellation);
+        HashSet<uint> crcs = [];
+        foreach (string path in request.List(Paths))
+        {
+            if (path.Length > 0)
+            {
+                crcs.Add(UnitySkinning.EntryCrc(path));
+            }
+        }
+        string clipCab = request.Given(Clip) ? ArchiveOf(map, request.Text(Clip)) : string.Empty;
         TableBuilder table = new(SourceSkeletonId, "skeleton", "cab", "hits#", "ratio#", "tos#", "host_cab", "host_seed");
         table.Role(ColumnRole.Label | ColumnRole.Key, "skeleton").Role(ColumnRole.Payload, "host_seed");
         if (crcs.Count == 0)
@@ -63,36 +69,9 @@ public static class ClipSourceSkeleton
         return table.Build();
     }
 
-    /// <summary>Every transform-curve binding hash of every clip the archive carries.</summary>
-    private static HashSet<uint> BindingCrcs(CabTable map, string clipCab, CancellationToken cancellation)
-    {
-        HashSet<uint> crcs = [];
-        GameData? loaded = ClosureReader.Read(map, [clipCab], reachThroughDependents: true);
-        if (loaded is null)
-        {
-            return crcs;
-        }
-        foreach (IUnityObjectBase asset in loaded.GameBundle.FetchAssets())
-        {
-            cancellation.ThrowIfCancellationRequested();
-            if (asset is not IAnimationClip clip || !string.Equals(asset.Collection.Name, clipCab, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-            (string meta, _) = ClipCurveBlob.Build(clip);
-            using JsonDocument document = JsonDocument.Parse(meta);
-            foreach (JsonElement curve in document.RootElement.GetProperty("curves").EnumerateArray())
-            {
-                string kind = curve.GetProperty("kind").GetString() ?? string.Empty;
-                string path = curve.GetProperty("path").GetString() ?? string.Empty;
-                if (kind != "float" && path.Length > 0)
-                {
-                    crcs.Add(UnitySkinning.EntryCrc(path));
-                }
-            }
-        }
-        return crcs;
-    }
+    private static string ArchiveOf(CabTable map, string seed) =>
+        map.TryGetId(seed, out _) ? seed : CabMap.ResolveCabsForPaths(map, [seed]).FirstOrDefault()
+            ?? throw new ArgumentException($"'{seed}' is neither an archive nor a container path of the loaded map.");
 
     private static List<Scored> Score(CabTable map, string clipCab, HashSet<uint> crcs, CancellationToken cancellation)
     {
@@ -150,11 +129,11 @@ public static class ClipSourceSkeleton
         return true;
     }
 
-    /// <summary>Two reverse hops then forward: the clip's dependents, their dependents, and
+    /// <summary>Two reverse hops then forward: the clips' archive's dependents, their dependents, and
     /// those archives' forward closures -- where an Avatar finally sits.</summary>
     private static List<(int Dependencies, string Cab)> GraphCandidates(CabTable map, string clipCab)
     {
-        if (!map.TryGetId(clipCab, out int clipId))
+        if (clipCab.Length == 0 || !map.TryGetId(clipCab, out int clipId))
         {
             return [];
         }
@@ -225,7 +204,8 @@ public static class ClipSourceSkeleton
     }
 
     /// <summary>The prefab whose ROOT Animator names exactly this avatar, among the archives
-    /// that use the avatar's archive, smallest closures first.</summary>
+    /// that use the avatar's archive, smallest closures first -- as a seed naming that root, since
+    /// the archive routinely files several prefabs.</summary>
     private static (string Cab, string Seed) Host(CabTable map, Scanned avatar, CancellationToken cancellation)
     {
         if (!map.TryGetId(avatar.Cab, out int avatarId))
@@ -264,7 +244,7 @@ public static class ClipSourceSkeleton
                 IAnimator? animator = root.TryGetComponent<IAnimator>();
                 if (animator?.AvatarP is { } found && string.Equals(found.Name.String, avatar.Name, StringComparison.Ordinal))
                 {
-                    return (cab, root.OriginalPath is { Length: > 0 } path ? path : cab);
+                    return (cab, cab + StatementSources.RootMarker + root.Name.String);
                 }
             }
         }

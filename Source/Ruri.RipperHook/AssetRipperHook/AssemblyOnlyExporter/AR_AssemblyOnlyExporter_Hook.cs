@@ -10,8 +10,8 @@ using Ruri.RipperHook.Attributes;
 
 namespace Ruri.RipperHook.AR;
 
-[RipperFeature("DisassemblyExporter")]
-public partial class AR_DisassemblyExporter_Hook : RipperHookCommon
+[RipperFeature("AssemblyOnlyExporter")]
+public partial class AR_AssemblyOnlyExporter_Hook : RipperHookCommon
 {
     [RetargetMethodFunc(typeof(ProjectExporter), "CreateCollections")]
     public static bool ProjectExporter_CreateCollections(ILContext il)
@@ -26,7 +26,7 @@ public partial class AR_DisassemblyExporter_Hook : RipperHookCommon
             injected++;
         }
 
-        Console.WriteLine($"    [+] AR_DisassemblyExporter: injected scripts-only filter at {injected} return site(s)");
+        Console.WriteLine($"    [+] AR_AssemblyOnlyExporter: injected scripts-only filter at {injected} return site(s)");
         return injected > 0;
     }
 
@@ -43,7 +43,7 @@ public partial class AR_DisassemblyExporter_Hook : RipperHookCommon
             injected++;
         }
 
-        Console.WriteLine($"    [+] AR_DisassemblyExporter: forced decompile-all at {injected} GetExportType return site(s)");
+        Console.WriteLine($"    [+] AR_AssemblyOnlyExporter: forced decompile-all at {injected} GetExportType return site(s)");
         return injected > 0;
     }
 
@@ -55,7 +55,7 @@ public partial class AR_DisassemblyExporter_Hook : RipperHookCommon
         }
 
         List<IExportCollection> scriptsOnly = collections.Where(static c => c is ScriptExportCollectionBase).ToList();
-        Console.WriteLine($"    [+] AR_DisassemblyExporter: {collections.Count} collections -> kept {scriptsOnly.Count} script collection(s), all assets skipped");
+        Console.WriteLine($"    [+] AR_AssemblyOnlyExporter: {collections.Count} collections -> kept {scriptsOnly.Count} script collection(s), all assets skipped");
         return scriptsOnly;
     }
 
@@ -76,7 +76,7 @@ public partial class AR_DisassemblyExporter_Hook : RipperHookCommon
             injected++;
         }
 
-        Console.WriteLine($"    [+] AR_DisassemblyExporter: forced IgnoreStreamingAssets at {injected} ImportSettings ctor return site(s)");
+        Console.WriteLine($"    [+] AR_AssemblyOnlyExporter: forced IgnoreStreamingAssets at {injected} ImportSettings ctor return site(s)");
         return injected > 0;
     }
 
