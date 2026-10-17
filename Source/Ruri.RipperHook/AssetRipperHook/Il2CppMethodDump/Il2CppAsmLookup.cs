@@ -69,7 +69,7 @@ internal static class Il2CppAsmLookup
             try
             {
                 string asm = app.InstructionSet is X86InstructionSet
-                    ? Il2CppX86Listing.Render(app, ctx)
+                    ? Il2CppX86Listing.Render(app, ctx, withAddresses: true, withChunks: true)
                     : Il2CppAsmAnnotator.Annotate(app, app.InstructionSet.PrintAssembly(ctx));
                 return $"VA=0x{ctx.UnderlyingPointer:X}  RVA=0x{ctx.Rva:X}\n{asm}";
             }

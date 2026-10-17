@@ -85,6 +85,25 @@ internal static class Il2CppAsmAnnotator
         return Resolve(address, inBrackets, overrides, dataConstants);
     }
 
+    /// <summary>Every address the runtime names itself: what the image exports, what the runtime's own key functions
+    /// were found to be, and the globals its start-up code was traced to write.</summary>
+    internal static IEnumerable<(ulong Address, string Kind, string Name)> RuntimeNames(ApplicationAnalysisContext app)
+    {
+        EnsureMaps(app);
+        foreach (KeyValuePair<ulong, string> export in _exports)
+            yield return (export.Key, "export", export.Value);
+        foreach (KeyValuePair<ulong, string> function in _keyFunctions)
+            yield return (function.Key, "keyFunction", function.Value);
+        foreach (KeyValuePair<ulong, string> global in _runtimeGlobals)
+            yield return (global.Key, "runtimeGlobal", global.Value);
+    }
+
+    internal static bool IsKeyFunction(ApplicationAnalysisContext app, ulong address, string nameContains)
+    {
+        EnsureMaps(app);
+        return _keyFunctions.TryGetValue(address, out string name) && name.Contains(nameContains);
+    }
+
     public static ulong KeyFunctionAddress(ApplicationAnalysisContext app, string nameContains)
     {
         EnsureMaps(app);
@@ -152,6 +171,8 @@ internal static class Il2CppAsmAnnotator
         if (_exports.TryGetValue(addr, out string export))            return export;
         if (_keyFunctions.TryGetValue(addr, out string keyFunc))
             return keyFunc;
+        if (Il2CppRuntimeSymbols.NameAt(_app, addr) is { } runtimeSymbol)
+            return runtimeSymbol;
         if (_runtimeGlobals != null && _runtimeGlobals.TryGetValue(addr, out string runtimeGlobal))            return runtimeGlobal;
         if (!_globalCache.TryGetValue(addr, out string global))
         {
@@ -181,9 +202,19 @@ internal static class Il2CppAsmAnnotator
 
     private static string CodeLabel(ulong addr)
     {
-        if (InMethodBody(addr)) return "loc_" + addr.ToString("X");
+        if (InsideFunction(addr)) return "loc_" + addr.ToString("X");
         string helper = Il2CppHelperNamer.TryGetName(_app, addr);
         return helper ?? "sub_" + addr.ToString("X");
+    }
+
+    /// <summary>Whether the address is somewhere in a function rather than at the first byte of one: the exception
+    /// directory says where functions and their chunks begin, so it answers for runtime helpers between methods too;
+    /// an image without one is answered by where the methods start.</summary>
+    private static bool InsideFunction(ulong addr)
+    {
+        Il2CppFunctionTable functions = Il2CppFunctionTable.For(_app);
+        if (functions.Count == 0) return InMethodBody(addr);
+        return !functions.IsPrimaryStart(addr) && functions.TryFind(addr, out _);
     }
 
     private static bool InMethodBody(ulong addr)
@@ -262,22 +293,28 @@ internal static class Il2CppAsmAnnotator
             {
                 case MetadataUsageType.MethodDef:
                     string methodKey = usage.AsMethod()?.GlobalKey;
-                    if (methodKey != null) return methodKey;
+                    if (methodKey != null) return methodKey + "_MethodInfo";
                     break;
                 case MetadataUsageType.MethodRef:
                     string genericKey = usage.AsGenericMethodRef()?.ToString();
-                    if (genericKey != null) return genericKey;
+                    if (genericKey != null) return genericKey + "_MethodInfo";
                     break;
                 case MetadataUsageType.FieldInfo:
                     Il2CppFieldDefinition field = usage.AsField();
                     if (field?.DeclaringType != null && field.Name != null)
-                        return field.DeclaringType.Name + "::" + field.Name;
+                        return field.DeclaringType.Name + "::" + field.Name + "_FieldInfo";
                     break;
             }
             if (usage.Value != null)
             {
                 string value = usage.Value.ToString();
-                return usage.Type.ToString().Contains("Type") ? value + "_TypeInfo" : value;
+                return usage.Type switch
+                {
+                    MetadataUsageType.TypeInfo => value + "_TypeInfo",
+                    MetadataUsageType.Type => value + "_TypeRef",
+                    MetadataUsageType.FieldRva => value + "_FieldRva",
+                    _ => value,
+                };
             }
         }
         return null;
@@ -361,6 +398,8 @@ internal static class Il2CppAsmAnnotator
             return "->" + targetExport;
         if (_keyFunctions.TryGetValue(target, out string targetKeyFunc))
             return "->" + targetKeyFunc;
+        if (Il2CppRuntimeSymbols.NameAt(_app, target) is { } targetRuntime)
+            return "->" + targetRuntime;
         return "->" + (InMethodBody(target) ? "loc_" : "sub_") + target.ToString("X");
     }
 

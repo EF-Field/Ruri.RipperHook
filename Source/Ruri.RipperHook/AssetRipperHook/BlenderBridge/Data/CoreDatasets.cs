@@ -43,6 +43,7 @@ public static class CoreDatasets
         Statements.TextureBake.Register();
         FolderDatasets.Register();
         ShaderDatasets.Register();
+        Il2CppDatasets.Register();
         Installs.Register();
 
         Datasets.Publish(DatasetsId, DataRole.Introspection, [],
