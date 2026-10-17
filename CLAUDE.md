@@ -1,4 +1,4 @@
-Ruri-RipperHook 内核约束(唯一常驻):RuriRipperImporter 的上游数据管线,通用跨引擎资产转换工具链;事实与坑见 FRAMEWORK.md,工程律见 skill ruri-engineering-discipline,UE 符号真值矩阵见 Source/Ruri.ShaderDecompiler/UE_SYMBOL_SOURCES.md。
+Ruri-RipperHook 内核约束(唯一常驻):RuriRipperImporter 的上游数据管线,通用跨引擎资产转换工具链;事实与坑见 FRAMEWORK.md,工程律见 skill ruri-engineering-discipline,着色器反编译库约束见 Source/Ruri.ShaderDecompiler/CLAUDE.md。
 1. 对外描述一律中立技术化,各来源的容器格式适配只住私有子模块 Source/Ruri.GameHook,不进对外描述。
 2. 可编辑区只有 Source/Ruri.*(RipperHook/Tpk/Hook/ShaderDecompiler/FModelHook/GameHook),AssetRipper、FModel 等上游子模块冻结只读(临时探查可改,收工 git checkout 还原),ShaderDecompiler 与 GameHook 是自有子模块。
 3. GameHook 按引擎分两半:Unity 子树编进 Ruri.RipperHook,Unreal 子树编进 Ruri.FModelHook(唯一可引用 CUE4Parse 的项目)。

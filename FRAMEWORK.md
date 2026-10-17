@@ -18,7 +18,7 @@ Ruri-RipperHook 框架事实:只记与常识相反或读代码得不到的约束
 17. chunk 条目名与 CAB 名不能互转,名字索引须记条目名;大游戏必须 bundle-granular 加载(GameBundleHook.LoadIncludeFile 在解密前按条目名过滤,否则整个 .chk 解出 OOM)。
 18. CabSelection 的谓词只约束种子不约束闭包,按分区扫描时每分区克隆一份 Regex(共享实例并发会退化成分配风暴)。
 19. 材质符号以 .usmap 为硬前置;hash→材质主桥是内联 FShaderMapBase.ResourceHash(CookedShaderMapIdHash 是另一个 ID 空间),并行 LoadPackage 下 CUE4Parse 吞反序列化异常使桥非确定,空包须单线程重试。
-20. native 依赖只来自 NuGet,禁往 {bin}/Tools/ 拷旧 native(过期的 dxil-only dll 会遮蔽新版,DXBC 报 dxil_spv_parse_dxil_blob failed -4)。
+20. native 依赖只来自 NuGet,禁往 {bin}/Tools/ 拷旧 native(反编译库的探测顺序与症状见其 CLAUDE.md)。
 21. UE 只有一个解码器 UnrealEngine_4.0 按引擎家族认领,UE 包不转 Unity 资产而以 unreal.* 数据集直出 Blender,通用读取代码不许出现游戏名。
 22. FModelHook 模块由构建写 Modules/{程序集名}.module 自声明、Bootstrap.LoadDeclaredModules 开机加载,须自带包(CopyLocalLockFileAssemblies+RuntimeIdentifier=win-x64),System.Numerics.Tensors 必须钉到 CUE4Parse 的版本,否则解密末步 FileLoadException 被吞成"档案没开"。
 23. UE 引擎版本读 exe 里 Build.version 的 UTF-16 字面量(不读版本资源),缺失即标 unreal.engine required 并拒绝挂载;读取参数全是 unreal.settings.schema 声明的源选项,代码不认识任何选项名,必填门判已 Apply 的生效态而非输入框。
