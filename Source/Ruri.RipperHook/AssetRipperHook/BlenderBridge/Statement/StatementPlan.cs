@@ -182,6 +182,9 @@ public sealed class StatementPlan
 /// registers what its own seeds mean. Asked in registration order; the first answer wins.</summary>
 public static class StatementSources
 {
+    /// <summary>What follows it in a seed names the one root object of the archive the rest of the seed resolves to.</summary>
+    public const string RootMarker = "##";
+
     public delegate StatementPlan? Source(string seed, CabTable map, StatementOptions options);
 
     private static readonly List<Source> Sources = [];
@@ -234,26 +237,37 @@ public static class StatementSources
                 return plan;
             }
         }
-        if (map.TryGetId(seed, out int cabId))
+        if (ByMap(seed, seed, map, []) is { } filed)
         {
-            return ForCabs(map, [map.CabName(cabId)], seed,
-                map.ContainerPathCount(cabId) > 0 ? map.ContainerPath(cabId, 0) : seed);
+            return filed;
         }
-        string[] cabs = CabMap.ResolveCabsForPaths(map, [seed]);
-        if (cabs.Length == 0)
+        int marker = seed.IndexOf(RootMarker, StringComparison.Ordinal);
+        if (marker > 0 && ByMap(seed, seed[..marker], map, [seed[(marker + RootMarker.Length)..]]) is { } rooted)
         {
-            cabs = CabMap.ResolveCabsUnderFolder(map, seed);
-        }
-        if (cabs.Length > 0)
-        {
-            return ForCabs(map, cabs, seed, seed);
+            return rooted;
         }
         throw new ArgumentException(
             $"seed '{seed}' is neither an archive, a container path nor a container folder of the loaded "
             + "map, and no registered statement source claims it.");
     }
 
-    private static StatementPlan ForCabs(CabTable map, string[] cabs, string seed, string named)
+    private static StatementPlan? ByMap(string seed, string location, CabTable map, IReadOnlyList<string> roots)
+    {
+        if (map.TryGetId(location, out int cabId))
+        {
+            return ForCabs(map, [map.CabName(cabId)], seed,
+                map.ContainerPathCount(cabId) > 0 ? map.ContainerPath(cabId, 0) : location, roots);
+        }
+        string[] cabs = CabMap.ResolveCabsForPaths(map, [location]);
+        if (cabs.Length == 0)
+        {
+            cabs = CabMap.ResolveCabsUnderFolder(map, location);
+        }
+        return cabs.Length > 0 ? ForCabs(map, cabs, seed, location, roots) : null;
+    }
+
+    private static StatementPlan ForCabs(CabTable map, string[] cabs, string seed, string named,
+        IReadOnlyList<string> roots)
     {
         bool hasObjects = false;
         foreach (string cab in cabs)
@@ -261,7 +275,7 @@ public static class StatementSources
             hasObjects |= map.TryGetId(cab, out int cabId)
                 && map.ClassIds(cabId).Contains((int)AssetRipper.SourceGenerated.ClassIDType.GameObject);
         }
-        string path = named.Replace('\\', '/').TrimEnd('/');
+        string path = (roots.Count > 0 ? roots[0] : named).Replace('\\', '/').TrimEnd('/');
         return new StatementPlan
         {
             Seed = seed,
@@ -269,6 +283,7 @@ public static class StatementSources
             Kind = hasObjects ? StatementKind.Prefab : StatementKind.Loose,
             Cabs = cabs,
             SeededOnly = true,
+            NamedRoots = roots,
         };
     }
 }
