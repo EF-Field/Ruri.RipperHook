@@ -21,6 +21,7 @@ public static class ShaderDatasets
 {
     public const string ShadersId = "core.shaders";
     public const string AllShadersId = "core.shaders.all";
+    public const string VariantsId = "core.shaders.variants";
     public const string Seed = "seed";
     public const string Output = "output";
 
@@ -33,6 +34,50 @@ public static class ShaderDatasets
         Datasets.Publish(AllShadersId, DataRole.Diagnostic, [DataParam.Text(Output)],
             "Every shader the install ships, written as source under output. A shader no material "
             + "references is still a shader the install ships; reached this way it states no variant.", AllShaders);
+        Datasets.Publish(VariantsId, DataRole.Diagnostic, [DataParam.List(Seed)],
+            "The variants a selection's materials ask for: one row per distinct (shader, enabled keywords), with how "
+            + "many materials ask for it and one of them by name. Nothing is written: the shader sources are the "
+            + "other datasets' question.", Variants);
+    }
+
+    private static ColumnTable Variants(DataRequest request)
+    {
+        Dictionary<(string Shader, string Keywords), (int Count, string Example)> asked = new();
+        GameData? loaded = ClosureReader.Read(request.Map, StatementSources.Archives(request.List(Seed), request.Map),
+            reachThroughDependents: true);
+        if (loaded is not null)
+        {
+            foreach (IUnityObjectBase asset in loaded.GameBundle.FetchAssets())
+            {
+                request.Cancellation.ThrowIfCancellationRequested();
+                if (asset is not IMaterial material || material.Shader_C21.TryGetAsset(material.Collection) is not IShader shader)
+                {
+                    continue;
+                }
+                string stated = UnityMaterials.ShaderNameOf(shader);
+                (string, string) key = (stated.Length > 0 ? stated : shader.GetBestName(), EnabledKeywords(material));
+                asked[key] = asked.TryGetValue(key, out (int Count, string Example) known) ? (known.Count + 1, known.Example) : (1, material.GetBestName());
+            }
+        }
+        TableBuilder table = new(VariantsId, "name|Shader", "keywords|Variant", "materials#|Materials", "example|Example");
+        table.Role(ColumnRole.Label, "name").Role(ColumnRole.Detail, "keywords");
+        foreach (((string shader, string keywords), (int count, string example)) in asked
+                     .OrderBy(pair => pair.Key.Shader, StringComparer.Ordinal).ThenByDescending(pair => pair.Value.Count))
+        {
+            table.Row(shader, keywords, (double)count, example);
+        }
+        return table.Build();
+    }
+
+    /// <summary>A material's enabled keywords come from the one reader that knows all three
+    /// serialisations Unity has used for them; reading one of the three here would report an
+    /// empty variant on every build that spells them another way, and throw on the builds
+    /// where that field is absent entirely.</summary>
+    private static string EnabledKeywords(IMaterial material)
+    {
+        List<string> enabled = [.. UnityMaterials.Read(material, static _ => string.Empty).KeywordList];
+        enabled.Sort(StringComparer.Ordinal);
+        return string.Join(' ', enabled);
     }
 
     private static ColumnTable Shaders(DataRequest request)
@@ -124,21 +169,10 @@ public static class ShaderDatasets
                 _written[shader] = file;
             }
             _table.Row(material is null ? string.Empty : material.GetBestName(), name,
-                material is null ? string.Empty : Keywords(material), file, new FileInfo(file).Length, shader.Collection.Name);
+                material is null ? string.Empty : EnabledKeywords(material), file, new FileInfo(file).Length, shader.Collection.Name);
         }
 
         public ColumnTable Build() => _table.Build();
-
-        /// <summary>A material's enabled keywords come from the one reader that knows all three
-        /// serialisations Unity has used for them; reading one of the three here would report an
-        /// empty variant on every build that spells them another way, and throw on the builds
-        /// where that field is absent entirely.</summary>
-        private static string Keywords(IMaterial material)
-        {
-            List<string> enabled = [.. UnityMaterials.Read(material, static _ => string.Empty).KeywordList];
-            enabled.Sort(StringComparer.Ordinal);
-            return string.Join(' ', enabled);
-        }
 
         private static string Readable(string name)
         {
