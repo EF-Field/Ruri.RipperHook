@@ -18,6 +18,7 @@ public static class CapabilityResolver
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(gameName);
         ArgumentNullException.ThrowIfNull(registry);
+        HookManager.RegisterCleanup(TypeTreeOverrides.Clear);
 
         List<MethodInfo> capabilityMethods = DiscoverCapabilityMethods(gameName);
 
@@ -202,7 +203,12 @@ public static class CapabilityResolver
                     $"[CapabilityResolver] {moduleType.Name} has no public static field '{slot.Key.StaticFieldName}'.");
 
             Delegate implementation = Delegate.CreateDelegate(field.FieldType, winner);
+            object? previous = field.GetValue(null);
             field.SetValue(null, implementation);
+            HookManager.RegisterCleanup(() =>
+            {
+                if (ReferenceEquals(field.GetValue(null), implementation)) field.SetValue(null, previous);
+            });
         }
     }
 

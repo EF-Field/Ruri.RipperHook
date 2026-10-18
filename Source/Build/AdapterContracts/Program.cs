@@ -5,6 +5,21 @@ using Ruri.RipperHook.Attributes;
 using Ruri.RipperHook.BlenderBridge;
 using Ruri.RipperHook.BlenderBridge.Install;
 using Ruri.RipperHook.Core.Capabilities;
+using Ruri.RipperHook.Core.TypeTree;
+using Ruri.Hook;
+using Ruri.Hook.Config;
+using AssetRipper.SourceGenerated;
+
+if (args.Length == 2 && args[0] == "--write-schemas")
+{
+    SchemaFixtures.Write(args[1]);
+    return;
+}
+if (args.Length > 0 && args[0] == "--schemas")
+{
+    SchemaFixtures.Verify(args.Skip(1).ToArray());
+    return;
+}
 
 int checks = 0;
 void Check(bool value, string label)
@@ -52,16 +67,19 @@ try
 }
 finally { Directory.Delete(install, recursive: true); }
 
-// Optional integration check for a second adapter actually compiled from a private folder.
-if (args.Length == 1)
+// Optional integration checks: every named adapter must coexist with the existing one.
+foreach (string expectedProduct in args)
 {
-    string expectedProduct = args[0];
-    Check(HookCatalog.VersionsOf(expectedProduct).Count > 0, "Build-selected adapter published its decoder");
+    var added = HookCatalog.VersionsOf(expectedProduct);
+    var existing = HookCatalog.VersionsOf(nameof(GameType.Endfield));
+    Check(added.Count > 0, "Additional adapter published its decoder");
+    Check(existing.Count > 0 && existing[0].Type.Assembly == added[0].Type.Assembly,
+        "Existing and additional adapters reside in the SAME Hook assembly");
     string folder = Path.Combine(Path.GetTempPath(), "new-game-contract-" + Guid.NewGuid().ToString("N"));
     Directory.CreateDirectory(folder);
     try
     {
-        File.WriteAllText(Path.Combine(folder, ".new-game-contract"), "fixture");
+        File.WriteAllText(Path.Combine(folder, ".new-game-contract-" + expectedProduct), "fixture");
         string[] identity = RipperBlenderBridge.ReadInstall(folder);
         Check(identity.Length == 7 && identity[2] == expectedProduct, "Build-selected adapter identifies installation");
         Check(RipperBlenderBridge.ResolveDecoder(identity[2], identity[3], identity[4], identity[5]) == expectedProduct + "_1.0.0",
@@ -99,6 +117,29 @@ Check(!RuriRuntimeHook.IsGameLoaded("FixtureProduct"), "Final scope cleanup");
 RuriRuntimeHook.RegisterLoadedGameHook(GameType.Unknown);
 Check(!RuriRuntimeHook.IsGameLoaded(GameType.Unknown), "Unknown enum no-op");
 Invalid(() => RuriRuntimeHook.RegisterLoadedGameHook(" "), "Empty loaded product accepted");
+
+// Exercise the real decoder lifecycle without native detours. B deliberately has no capabilities.
+FixtureModule.Value = null;
+var state = new HookConfig();
+void Select(string? decoder)
+{
+    state.EnabledHooks.Clear();
+    if (decoder is not null) state.EnabledHooks.Add(decoder);
+    RuriHook.ApplyHooks(state);
+}
+var gate = typeof(TypeTreeOverrides).GetMethod("FindGate", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+Select("SwitchProductA_1.0.0");
+Check(FixtureModule.Value?.Invoke() == "switch-a" && RuriRuntimeHook.IsGameLoaded("SwitchProductA"), "A active");
+Check(!TypeTreeDatabase.ActiveVersion.IsEmpty && gate.Invoke(null, [ClassIDType.Mesh, "fixture"]) is not null, "A schema state active");
+Select("SwitchProductB_1.0.0");
+Check(FixtureModule.Value is null && !RuriRuntimeHook.IsGameLoaded("SwitchProductA"), "A callbacks removed before B");
+Check(TypeTreeDatabase.ActiveVersion.IsEmpty && gate.Invoke(null, [ClassIDType.Mesh, "fixture"]) is null, "A type-tree state removed before capability-free B");
+Check(RuriRuntimeHook.IsGameLoaded("SwitchProductB"), "B active from same Hook catalog");
+Select("SwitchProductA_1.0.0");
+Check(FixtureModule.Value?.Invoke() == "switch-a" && !RuriRuntimeHook.IsGameLoaded("SwitchProductB"), "B to A");
+Select(null);
+Check(FixtureModule.Value is null && !RuriRuntimeHook.IsGameLoaded("SwitchProductA"), "A to no decoder");
+Check(TypeTreeDatabase.ActiveVersion.IsEmpty && gate.Invoke(null, [ClassIDType.Mesh, "fixture"]) is null, "No stale schema state");
 Console.WriteLine($"ADAPTER_REGISTRATION_CONTRACT_PASS checks={checks}");
 
 [RipperHook("FixtureProduct", "1.0.0", "2021.3.0f1")]
@@ -140,4 +181,29 @@ public static class FixtureOtherCapabilities
 {
     [Since("1.0.0"), FeedsModule(typeof(FixtureModule), nameof(FixtureModule.Value))]
     public static string V1() => "other";
+}
+
+[RipperHook("SwitchProductA", "1.0.0")]
+public sealed class SwitchHookA : RuriHook
+{
+    public override void Initialize()
+    {
+        CapabilityResolver.Apply("SwitchProductA", "1.0.0", Registry);
+        RuriRuntimeHook.RegisterLoadedGameHook("SwitchProductA");
+        TypeTreeDatabase.ActiveVersion = new("fixture", "1");
+        TypeTreeOverrides.RegisterGate(ClassIDType.Mesh, "fixture", _ => true, []);
+    }
+}
+
+[RipperHook("SwitchProductB", "1.0.0")]
+public sealed class SwitchHookB : RuriHook
+{
+    public override void Initialize() => RuriRuntimeHook.RegisterLoadedGameHook("SwitchProductB");
+}
+
+[GameCapabilities("SwitchProductA")]
+public static class SwitchCapabilities
+{
+    [Since("1.0.0"), FeedsModule(typeof(FixtureModule), nameof(FixtureModule.Value))]
+    public static string Value() => "switch-a";
 }

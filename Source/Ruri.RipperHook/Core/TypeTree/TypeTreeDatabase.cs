@@ -8,19 +8,32 @@ using AssetRipper.Primitives;
 using AssetRipper.SourceGenerated;
 using AssetRipper.Tpk;
 using AssetRipper.Tpk.TypeTrees;
+using Ruri.Hook.Core;
 
 namespace Ruri.RipperHook.Core.TypeTree;
 
 public static class TypeTreeDatabase
 {
     public const string ResourceName = "RuriTypeTree.tpk";
+    public const string AdditionalResourcePrefix = "Ruri.GameHook.TypeTrees.";
     public const string PathEnvironmentVariable = "RURI_TYPE_TREE_TPK";
 
     private static readonly object SyncRoot = new();
     private static readonly ConcurrentDictionary<(int ClassID, string Lineage, string Version), TypeTreeNode?> ReleaseRootCache = new();
     private static readonly ConcurrentDictionary<(int ClassID, string Lineage, string Version), TypeTreeNode?> EditorRootCache = new();
 
-    public static TypeTreeVersion ActiveVersion { get; set; }
+    private static TypeTreeVersion _activeVersion;
+    public static TypeTreeVersion ActiveVersion
+    {
+        get => _activeVersion;
+        set
+        {
+            TypeTreeVersion previous = _activeVersion;
+            _activeVersion = value;
+            if (previous != value && HookManager.CurrentScopeId is not null)
+                HookManager.RegisterCleanup(() => { if (_activeVersion == value) _activeVersion = previous; });
+        }
+    }
 
     private static TypeTreeManifest? _manifest;
     private static Dictionary<string, Lineage>? _lineages;
@@ -263,52 +276,68 @@ public static class TypeTreeDatabase
                 return;
             }
 
-            using Stream stream = OpenTpkStream(out string origin);
-            TpkDataBlob root = TpkFile.FromStream(stream).GetDataBlob();
-
-            if (root is not TpkCollectionBlob collection)
-            {
-                throw new InvalidDataException(
-                    $"[TypeTreeDatabase] {origin} holds a {root.DataType} blob; expected a Collection. Repack it with Ruri.Tpk.");
-            }
-
-            TypeTreeManifest? manifest = null;
-            Dictionary<string, TpkTypeTreeBlob> blobs = new(StringComparer.Ordinal);
-
-            foreach (KeyValuePair<string, TpkDataBlob> pair in collection.Blobs)
-            {
-                switch (pair.Value)
-                {
-                    case TpkJsonBlob json when pair.Key == TypeTreeManifest.BlobName:
-                        manifest = TypeTreeManifest.FromJson(json.Text);
-                        break;
-
-                    case TpkTypeTreeBlob typeTree:
-                        blobs[pair.Key] = typeTree;
-                        break;
-                }
-            }
-
-            TypeTreeManifest loaded = manifest ?? throw new InvalidDataException(
-                $"[TypeTreeDatabase] {origin} has no '{TypeTreeManifest.BlobName}' manifest. Repack it with Ruri.Tpk.");
-
+            Assembly assembly = typeof(TypeTreeDatabase).Assembly;
+            // An explicit override remains authoritative; it never silently mixes with embedded packs.
+            bool overridden = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(PathEnvironmentVariable));
+            string[] additional = overridden ? [] : assembly.GetManifestResourceNames()
+                .Where(name => name.StartsWith(AdditionalResourcePrefix, StringComparison.Ordinal) &&
+                               name.EndsWith(".tpk", StringComparison.Ordinal))
+                .OrderBy(static name => name, StringComparer.Ordinal).ToArray();
+            TypeTreeManifest loaded = new();
             Dictionary<string, Lineage> lineages = new(StringComparer.Ordinal);
-            foreach (TypeTreeManifest.LineageEntry entry in loaded.Lineages)
+            Dictionary<string, string> origins = new(StringComparer.Ordinal);
+            List<string> packs = new();
+            using (Stream? stream = OpenTpkStream(out string origin, optional: additional.Length > 0))
             {
-                lineages[entry.Key] = Lineage.From([Blob(entry.Key)], [Blob(entry.UnityNames)]);
+                if (stream is not null) AddPack(stream, origin, loaded, lineages, origins, packs);
             }
+            foreach (string name in additional)
+            {
+                using Stream stream = assembly.GetManifestResourceStream(name)
+                    ?? throw new InvalidDataException($"[TypeTreeDatabase] Missing registered resource {name}.");
+                AddPack(stream, "embedded:" + name, loaded, lineages, origins, packs);
+            }
+            // Publish atomically only after every pack validates. A failing pack leaves no partial catalog.
             _lineages = lineages;
-            _origin = origin;
+            _origin = string.Join("; ", packs);
             Volatile.Write(ref _manifest, loaded);
-
-            TpkTypeTreeBlob Blob(string key) => blobs.TryGetValue(key, out TpkTypeTreeBlob? blob)
-                ? blob
-                : throw new InvalidDataException(
-                    $"[TypeTreeDatabase] {origin}'s manifest names blob '{key}', which it does not hold. Repack it with Ruri.Tpk.");
         }
     }
 
-    private static Stream OpenTpkStream(out string origin)
+    private static void AddPack(Stream stream, string origin, TypeTreeManifest combined,
+        Dictionary<string, Lineage> lineages, Dictionary<string, string> origins, List<string> packs)
+    {
+        TpkDataBlob root = TpkFile.FromStream(stream).GetDataBlob();
+        if (root is not TpkCollectionBlob collection)
+            throw new InvalidDataException($"[TypeTreeDatabase] {origin} holds a {root.DataType} blob; expected a Collection.");
+        TypeTreeManifest? manifest = null;
+        Dictionary<string, TpkTypeTreeBlob> blobs = new(StringComparer.Ordinal);
+        foreach (KeyValuePair<string, TpkDataBlob> pair in collection.Blobs)
+        {
+            if (pair.Value is TpkJsonBlob json && pair.Key == TypeTreeManifest.BlobName)
+                manifest = TypeTreeManifest.FromJson(json.Text);
+            else if (pair.Value is TpkTypeTreeBlob tree) blobs.Add(pair.Key, tree);
+        }
+        TypeTreeManifest loaded = manifest ?? throw new InvalidDataException(
+            $"[TypeTreeDatabase] {origin} has no '{TypeTreeManifest.BlobName}' manifest.");
+        foreach (TypeTreeManifest.LineageEntry entry in loaded.Lineages)
+        {
+            if (string.IsNullOrWhiteSpace(entry.Key))
+                throw new InvalidDataException($"[TypeTreeDatabase] Empty lineage key in {origin}.");
+            if (origins.TryGetValue(entry.Key, out string? previous))
+                throw new InvalidDataException($"[TypeTreeDatabase] Duplicate lineage '{entry.Key}' in {previous} and {origin}.");
+            // Blob names are PACK-LOCAL: two games may both have a helper blob called 'unity'.
+            lineages.Add(entry.Key, Lineage.From([Blob(entry.Key)], [Blob(entry.UnityNames)]));
+            origins.Add(entry.Key, origin);
+            combined.Lineages.Add(entry);
+        }
+        packs.Add(origin);
+
+        TpkTypeTreeBlob Blob(string key) => blobs.TryGetValue(key, out TpkTypeTreeBlob? blob) ? blob
+            : throw new InvalidDataException($"[TypeTreeDatabase] {origin}'s manifest names missing blob '{key}'.");
+    }
+
+    private static Stream? OpenTpkStream(out string origin, bool optional = false)
     {
         string? overridePath = Environment.GetEnvironmentVariable(PathEnvironmentVariable);
         if (!string.IsNullOrWhiteSpace(overridePath))
@@ -338,6 +367,7 @@ public static class TypeTreeDatabase
             return resource;
         }
 
+        if (optional) { origin = "<no base pack>"; return null; }
         throw new FileNotFoundException(
             $"[TypeTreeDatabase] {ResourceName} was not found next to {assembly.GetName().Name} nor embedded in it. " +
             $"Build it with Ruri.Tpk, or set {PathEnvironmentVariable}.", adjacentPath);

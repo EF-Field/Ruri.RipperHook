@@ -1,7 +1,6 @@
 param(
     [switch]$PrivateHook,
     [string]$GameHookRoot,
-    [string]$GameHookGame = 'Endfield',
     [string]$DependencySnapshot,
     [string]$PackageSource = 'https://api.nuget.org/v3/index.json',
     [string]$OutputDirectory,
@@ -41,7 +40,7 @@ foreach ($Name in @('Ruri.Hook','Ruri.ACL','Ruri.ShaderDecompiler')) {
 & $DotNet build "$Root/Source/Ruri.RipperHook/Ruri.RipperHook.csproj" @Common `
     "-p:PureRelease=$((-not $PrivateHook.IsPresent).ToString().ToLowerInvariant())" `
     "-p:UseGameHook=$($PrivateHook.IsPresent.ToString().ToLowerInvariant())" `
-    "-p:GameHookRoot=$GameHookRoot" "-p:GameHookGame=$GameHookGame" `
+    "-p:GameHookRoot=$GameHookRoot" `
     "-p:RuriDeps=$DependencySnapshot" "-p:StatementDeps=$OutputDirectory/dependencies" `
     "-p:DirectoryBuildTargetsPath=$PSScriptRoot/SnapshotDependencies.targets" `
     "-p:OutputPath=$OutputDirectory/bin/" "-p:BaseIntermediateOutputPath=$OutputDirectory/obj/kernel/" `

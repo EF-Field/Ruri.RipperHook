@@ -84,13 +84,15 @@ registration/query/cleanup also accepts strings, scoped to the hook lifecycle.
 
 New private source trees provide a generic `GameHook.targets` entry. Select one
 using `UseGameHook=true` and `GameHookRoot`; adapter-specific selection stays
-inside that private tree. `UseEndfieldGameHook` and the default nested gitlink
+inside that private tree, which composes all registered games into the SAME
+kernel. Runtime install identity selects a decoder; there is no per-game Hook
+build. `UseEndfieldGameHook` and the default nested gitlink
 remain compatibility defaults. Older pinned trees with only
 `Integration/Statement.targets` still build through their old Statement entry.
 
 ```powershell
 ./Source/Build/build-kernel.ps1 -PrivateHook `
-  -GameHookRoot 'PATH_TO_PRIVATE_ADAPTERS' -GameHookGame 'ADAPTER_ID' `
+  -GameHookRoot 'PATH_TO_PRIVATE_ADAPTERS' `
   -DependencySnapshot 'COMPATIBLE_SNAPSHOT' -OutputDirectory 'C:/temp/adapter-build'
 ```
 
@@ -99,6 +101,14 @@ identity and `[RipperEngineFile]` for transformed Unity identity-file reading.
 No per-product host detection branch is needed. Game-specific UI/shader work is
 separate. The optional TPK drift/stub generator retains its historical routing;
 it is not required to register runtime product strings.
+
+Additional schema packs can be embedded with unique logical names under
+`Ruri.GameHook.TypeTrees.*.tpk`. The loader combines declared lineages using
+pack-local original/renamed blob lookups and rejects duplicate lineage identities.
+The legacy base resource/adjacent-file precedence is preserved. An explicit
+`RURI_TYPE_TREE_TPK` remains authoritative and excludes embedded additions.
+Capability module delegates, type-tree overrides and active schema versions have
+scoped cleanup so changing the runtime decoder does not retain another game's state.
 
 Public source-profile guards (no private files required):
 `python -m unittest discover -s Source/Build -p "test_*.py"`.
