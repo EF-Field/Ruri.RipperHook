@@ -20,7 +20,7 @@ namespace Ruri.Hook.Core
 
             if (!string.IsNullOrEmpty(targetGameName))
             {
-                targetTypes = types.Where(t => 
+                targetTypes = types.Where(t =>
                 {
                     var attr = t.GetCustomAttribute<GameHookAttribute>();
                     return attr != null && attr.GameName == targetGameName;
@@ -33,8 +33,8 @@ namespace Ruri.Hook.Core
 
             var scannedMethods = targetTypes.SelectMany(t => t.GetMethods(bindingFlags));
 
-            var allMethods = manualMethods != null 
-                ? scannedMethods.Concat(manualMethods).Distinct() 
+            var allMethods = manualMethods != null
+                ? scannedMethods.Concat(manualMethods).Distinct()
                 : scannedMethods;
 
             ApplyRetargetMethodAttributes(allMethods);
@@ -46,7 +46,7 @@ namespace Ruri.Hook.Core
         {
             var bindingFlags = ReflectionExtensions.AnyBindFlag();
             var methods = type.GetMethods(bindingFlags);
-            
+
             ApplyRetargetMethodAttributes(methods);
             ApplyRetargetMethodFuncAttributes(methods);
             ApplyRetargetMethodCtorFuncAttributes(methods);
@@ -57,6 +57,53 @@ namespace Ruri.Hook.Core
             ApplyRetargetMethodAttributes(methods);
             ApplyRetargetMethodFuncAttributes(methods);
             ApplyRetargetMethodCtorFuncAttributes(methods);
+        }
+
+        /// <summary>
+        /// Every upstream method these hook methods declare as their target, found the way applying them finds it. A
+        /// declaration that names nothing in this build is left out: it cannot be applied either.
+        /// </summary>
+        internal static List<MethodBase> DeclaredSources(IEnumerable<MethodInfo> methods)
+        {
+            List<MethodBase> found = new();
+            foreach (MethodInfo method in methods)
+            {
+                if (!DeclaresRetarget(method))
+                {
+                    continue;
+                }
+                foreach (RetargetMethodAttribute attr in method.GetCustomAttributes<RetargetMethodAttribute>(true))
+                {
+                    Collect(found, () => ResolveSource(method, attr));
+                }
+                foreach (RetargetMethodFuncAttribute attr in method.GetCustomAttributes<RetargetMethodFuncAttribute>(true))
+                {
+                    Collect(found, () => ResolveSource(method, attr));
+                }
+                foreach (RetargetMethodCtorFuncAttribute attr in method.GetCustomAttributes<RetargetMethodCtorFuncAttribute>(true))
+                {
+                    Collect(found, () => ResolveSource(attr));
+                }
+            }
+            return found;
+        }
+
+        private static bool DeclaresRetarget(MethodInfo method)
+        {
+            return method.IsDefined(typeof(RetargetMethodAttribute), true) ||
+                method.IsDefined(typeof(RetargetMethodFuncAttribute), true) ||
+                method.IsDefined(typeof(RetargetMethodCtorFuncAttribute), true);
+        }
+
+        private static void Collect(List<MethodBase> found, Func<MethodBase> resolve)
+        {
+            try
+            {
+                found.Add(resolve());
+            }
+            catch
+            {
+            }
         }
 
         private void ApplyRetargetMethodAttributes(IEnumerable<MethodInfo> methods)
@@ -75,9 +122,31 @@ namespace Ruri.Hook.Core
 
         private void ProcessRetarget(MethodInfo methodDest, RetargetMethodAttribute attr)
         {
+            MethodInfo methodSrc = ResolveSource(methodDest, attr);
+
+            HookBaselines.Verify(methodSrc, HookManager.CurrentScopeId);
+
+            int srcParamCount = methodSrc.GetParameters().Length;
+
+            if (methodSrc.IsStatic) srcParamCount--;
+
+            try
+            {
+                ReflectionExtensions.RetargetCall(methodSrc, methodDest, srcParamCount, attr.IsBefore, attr.IsReturn);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException(
+                    $"[HookRegistry] Retarget failed: {methodSrc.DeclaringType?.FullName}.{methodSrc.Name} -> " +
+                    $"{methodDest.DeclaringType?.FullName}.{methodDest.Name}", ex);
+            }
+        }
+
+        private static MethodInfo ResolveSource(MethodInfo methodDest, RetargetMethodAttribute attr)
+        {
             var bindingFlags = ReflectionExtensions.AnyBindFlag();
             MethodInfo? methodSrc;
-            
+
             var methodName = attr.SourceMethodName;
             if (string.IsNullOrEmpty(methodName))
             {
@@ -93,7 +162,7 @@ namespace Ruri.Hook.Core
             if (sourceType == null && !string.IsNullOrEmpty(attr.SourceTypeName))
             {
                sourceType = Type.GetType(attr.SourceTypeName);
-               
+
                if (sourceType == null)
                {
                    foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
@@ -138,7 +207,7 @@ namespace Ruri.Hook.Core
                  if (methodName.Contains("_"))
                  {
                      var relaxedName = methodName.Substring(methodName.IndexOf('_') + 1);
-                     try 
+                     try
                      {
                          if (attr.MethodParameters == null)
                          {
@@ -169,22 +238,7 @@ namespace Ruri.Hook.Core
             if (methodSrc == null)
                  throw new Exception($"[HookRegistry] Could not find source method {sourceType.Name}.{methodName} (Relaxed lookup also failed)");
 
-            HookBaselines.Verify(methodSrc, HookManager.CurrentScopeId);
-
-            int srcParamCount = methodSrc.GetParameters().Length;
-
-            if (methodSrc.IsStatic) srcParamCount--;
-
-            try
-            {
-                ReflectionExtensions.RetargetCall(methodSrc, methodDest, srcParamCount, attr.IsBefore, attr.IsReturn);
-            }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException(
-                    $"[HookRegistry] Retarget failed: {methodSrc.DeclaringType?.FullName}.{methodSrc.Name} -> " +
-                    $"{methodDest.DeclaringType?.FullName}.{methodDest.Name}", ex);
-            }
+            return methodSrc;
         }
 
         /// <summary>
@@ -252,42 +306,7 @@ namespace Ruri.Hook.Core
              {
                  foreach(var attr in methodDest.GetCustomAttributes<RetargetMethodFuncAttribute>())
                  {
-                     var bindingFlags = ReflectionExtensions.AnyBindFlag();
-                     
-                     var methodName = attr.SourceMethodName;
-                     if (string.IsNullOrEmpty(methodName))
-                     {
-                        methodName = methodDest.Name;
-                        var prefix = attr.SourceType.Name + "_";
-                        if (methodName.StartsWith(prefix))
-                        {
-                            methodName = methodName.Substring(prefix.Length);
-                        }
-                     }
-
-                     MethodInfo? methodSrc = null;
-
-                     if (attr.MethodParameters != null)
-                     {
-                        methodSrc = attr.SourceType.GetMethod(methodName, bindingFlags, attr.MethodParameters)
-                            ?? MatchByElementTypes(attr.SourceType, methodName, bindingFlags, attr.MethodParameters);
-                     }
-                     if (methodSrc == null)
-                     {
-                         try
-                         {
-                            methodSrc = attr.SourceType.GetMethod(methodName, bindingFlags);
-                         }
-                         catch (AmbiguousMatchException) { }
-                     }
-
-                     if (methodSrc == null)
-                     {
-                         methodSrc = attr.SourceType.GetMethods(bindingFlags).FirstOrDefault(m => m.Name == methodName);
-                     }
-
-                     if (methodSrc == null)
-                         throw new Exception($"[HookRegistry] Could not find source method {attr.SourceType.Name}.{methodName}");
+                     MethodInfo methodSrc = ResolveSource(methodDest, attr);
 
                      HookBaselines.Verify(methodSrc, HookManager.CurrentScopeId);
 
@@ -297,6 +316,48 @@ namespace Ruri.Hook.Core
              }
         }
 
+        private static MethodInfo ResolveSource(MethodInfo methodDest, RetargetMethodFuncAttribute attr)
+        {
+            var bindingFlags = ReflectionExtensions.AnyBindFlag();
+
+            var methodName = attr.SourceMethodName;
+            if (string.IsNullOrEmpty(methodName))
+            {
+               methodName = methodDest.Name;
+               var prefix = attr.SourceType.Name + "_";
+               if (methodName.StartsWith(prefix))
+               {
+                   methodName = methodName.Substring(prefix.Length);
+               }
+            }
+
+            MethodInfo? methodSrc = null;
+
+            if (attr.MethodParameters != null)
+            {
+               methodSrc = attr.SourceType.GetMethod(methodName, bindingFlags, attr.MethodParameters)
+                   ?? MatchByElementTypes(attr.SourceType, methodName, bindingFlags, attr.MethodParameters);
+            }
+            if (methodSrc == null)
+            {
+                try
+                {
+                   methodSrc = attr.SourceType.GetMethod(methodName, bindingFlags);
+                }
+                catch (AmbiguousMatchException) { }
+            }
+
+            if (methodSrc == null)
+            {
+                methodSrc = attr.SourceType.GetMethods(bindingFlags).FirstOrDefault(m => m.Name == methodName);
+            }
+
+            if (methodSrc == null)
+                throw new Exception($"[HookRegistry] Could not find source method {attr.SourceType.Name}.{methodName}");
+
+            return methodSrc;
+        }
+
         private void ApplyRetargetMethodCtorFuncAttributes(IEnumerable<MethodInfo> methods)
         {
              var targetMethods = methods.Where(m => m.GetCustomAttributes<RetargetMethodCtorFuncAttribute>(true).Any());
@@ -304,13 +365,7 @@ namespace Ruri.Hook.Core
              {
                  foreach(var attr in methodDest.GetCustomAttributes<RetargetMethodCtorFuncAttribute>())
                  {
-                     var bindingFlags = ReflectionExtensions.AnyBindFlag();
-                     ConstructorInfo? methodSrc = attr.MethodParameters == null 
-                        ? attr.SourceType.GetConstructor(Type.EmptyTypes)
-                        : attr.SourceType.GetConstructor(bindingFlags, attr.MethodParameters);
-
-                     if (methodSrc == null)
-                         throw new Exception($"[HookRegistry] Could not find source constructor {attr.SourceType.Name}");
+                     ConstructorInfo methodSrc = ResolveSource(attr);
 
                      HookBaselines.Verify(methodSrc, HookManager.CurrentScopeId);
 
@@ -318,6 +373,19 @@ namespace Ruri.Hook.Core
                      ReflectionExtensions.RetargetCallCtorFunc(hookCallback, methodSrc);
                  }
              }
+        }
+
+        private static ConstructorInfo ResolveSource(RetargetMethodCtorFuncAttribute attr)
+        {
+            var bindingFlags = ReflectionExtensions.AnyBindFlag();
+            ConstructorInfo? methodSrc = attr.MethodParameters == null
+               ? attr.SourceType.GetConstructor(Type.EmptyTypes)
+               : attr.SourceType.GetConstructor(bindingFlags, attr.MethodParameters);
+
+            if (methodSrc == null)
+                throw new Exception($"[HookRegistry] Could not find source constructor {attr.SourceType.Name}");
+
+            return methodSrc;
         }
     }
 }

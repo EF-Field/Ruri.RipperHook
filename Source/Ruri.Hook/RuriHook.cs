@@ -57,6 +57,8 @@ namespace Ruri.Hook
 
             lock (LifecycleSyncRoot)
             {
+                HookInlining.ReserveDeclared();
+
                 List<string> features = new();
                 string? decoder = null;
 
