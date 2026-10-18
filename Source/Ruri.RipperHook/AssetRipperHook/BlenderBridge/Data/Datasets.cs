@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Ruri.RipperHook.CabMapping;
 using Ruri.RipperHook.BlenderBridge.Tables;
@@ -39,6 +40,14 @@ public static class Datasets
     private static readonly ConcurrentDictionary<string, Dataset> Registered = new(StringComparer.OrdinalIgnoreCase);
     private static readonly KeptAnswers Kept = new(KeptAnswerBytes);
     private static long published;
+
+    /// <summary>
+    /// Which map an answer was read from. A table is an answer about one map, so the same dataset and arguments over two
+    /// maps are two tables and need two handles: under one, the second install's rows replaced the first's, and a search
+    /// of the first ran over the second.
+    /// </summary>
+    private static readonly ConditionalWeakTable<CabTable, StrongBox<long>> MapNumbers = new();
+    private static long mapsNumbered;
 
     public static void Publish(string id, DataRole role, DataParam[] parameters, string description,
         TableProducer producer)
@@ -110,7 +119,7 @@ public static class Datasets
         {
             throw new InvalidOperationException($"dataset '{id}' is a blob, not a table -- ask for it with Blob().");
         }
-        string handle = HandleOf(id, values);
+        string handle = HandleOf(id, values, map);
         if (Kept.TryGet(handle, out ColumnTable? kept))
         {
             return (handle, kept);
@@ -208,7 +217,7 @@ public static class Datasets
             ? "(no arguments)"
             : string.Join(", ", dataset.Parameters.Select(parameter => parameter.ToString()));
 
-    private static string HandleOf(string id, Dictionary<string, string[]> values)
+    private static string HandleOf(string id, Dictionary<string, string[]> values, CabTable? map)
     {
         StringBuilder handle = new(id);
         foreach ((string name, string[] entries) in values.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
@@ -219,6 +228,10 @@ public static class Datasets
             {
                 Append(handle, entry);
             }
+        }
+        if (map is not null)
+        {
+            handle.Append("|map:").Append(MapNumbers.GetValue(map, static _ => new StrongBox<long>(Interlocked.Increment(ref mapsNumbered))).Value);
         }
         return handle.ToString();
     }
