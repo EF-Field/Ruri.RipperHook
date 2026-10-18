@@ -12,10 +12,14 @@ namespace Ruri.RipperHook.Core.Capabilities;
 public static class CapabilityResolver
 {
     public static void Apply(GameType game, string version, HookRegistry registry)
+        => Apply(game.ToString(), version, registry);
+
+    public static void Apply(string gameName, string version, HookRegistry registry)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(gameName);
         ArgumentNullException.ThrowIfNull(registry);
 
-        List<MethodInfo> capabilityMethods = DiscoverCapabilityMethods(game);
+        List<MethodInfo> capabilityMethods = DiscoverCapabilityMethods(gameName);
 
         ApplyRetargetCapabilities(capabilityMethods, version, registry);
         ApplyModuleCapabilities(capabilityMethods, version, registry);
@@ -80,7 +84,7 @@ public static class CapabilityResolver
         }
     }
 
-    private static List<MethodInfo> DiscoverCapabilityMethods(GameType game)
+    private static List<MethodInfo> DiscoverCapabilityMethods(string gameName)
     {
         List<MethodInfo> methods = new();
 
@@ -118,7 +122,7 @@ public static class CapabilityResolver
                 if (type is null) continue;
 
                 bool ownsThisGame = type.GetCustomAttributes<GameCapabilitiesAttribute>()
-                    .Any(a => a.GameType == game);
+                    .Any(a => string.Equals(a.GameName, gameName, StringComparison.OrdinalIgnoreCase));
                 if (!ownsThisGame) continue;
 
                 methods.AddRange(type.GetMethods(ReflectionExtensions.AnyBindFlag())

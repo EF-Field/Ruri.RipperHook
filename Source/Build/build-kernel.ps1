@@ -1,5 +1,7 @@
 param(
     [switch]$PrivateHook,
+    [string]$GameHookRoot,
+    [string]$GameHookGame = 'Endfield',
     [string]$DependencySnapshot,
     [string]$PackageSource = 'https://api.nuget.org/v3/index.json',
     [string]$OutputDirectory,
@@ -10,16 +12,18 @@ $Root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $Profile = if ($PrivateHook) { 'private' } else { 'public' }
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $Root "Source/0Bins/$Profile" }
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
+if (-not $GameHookRoot) { $GameHookRoot = Join-Path $Root 'Source/Endfield-GameHook' }
+if ($PrivateHook) { $GameHookRoot = (Resolve-Path -LiteralPath $GameHookRoot).Path }
 if (-not $DependencySnapshot -and $PrivateHook) {
-    $DependencySnapshot = Join-Path $Root 'Source/Endfield-GameHook/runtime'
+    $DependencySnapshot = Join-Path $GameHookRoot 'runtime'
 }
 if (-not $DependencySnapshot) {
     throw 'Supply -DependencySnapshot containing the compatible AssetRipper DLLs. See Source/Build/README.md for the source-build route.'
 }
 $DependencySnapshot = (Resolve-Path -LiteralPath $DependencySnapshot).Path
-$Hook = Join-Path $Root 'Source/Endfield-GameHook'
-if ($PrivateHook -and -not (Test-Path -LiteralPath "$Hook/Integration/Statement.targets")) {
-    throw 'Initialize Source/Endfield-GameHook first.'
+if ($PrivateHook -and -not ((Test-Path -LiteralPath "$GameHookRoot/GameHook.targets") -or
+                           (Test-Path -LiteralPath "$GameHookRoot/Integration/Statement.targets"))) {
+    throw 'Initialize the private adapter checkout or supply -GameHookRoot.'
 }
 if (-not (Test-Path -LiteralPath "$Root/Source/Ruri.ShaderDecompiler/Ruri.ShaderDecompiler.csproj")) {
     throw 'Initialize Source/Ruri.ShaderDecompiler first.'
@@ -36,7 +40,8 @@ foreach ($Name in @('Ruri.Hook','Ruri.ACL','Ruri.ShaderDecompiler')) {
 }
 & $DotNet build "$Root/Source/Ruri.RipperHook/Ruri.RipperHook.csproj" @Common `
     "-p:PureRelease=$((-not $PrivateHook.IsPresent).ToString().ToLowerInvariant())" `
-    "-p:UseEndfieldGameHook=$($PrivateHook.IsPresent.ToString().ToLowerInvariant())" `
+    "-p:UseGameHook=$($PrivateHook.IsPresent.ToString().ToLowerInvariant())" `
+    "-p:GameHookRoot=$GameHookRoot" "-p:GameHookGame=$GameHookGame" `
     "-p:RuriDeps=$DependencySnapshot" "-p:StatementDeps=$OutputDirectory/dependencies" `
     "-p:DirectoryBuildTargetsPath=$PSScriptRoot/SnapshotDependencies.targets" `
     "-p:OutputPath=$OutputDirectory/bin/" "-p:BaseIntermediateOutputPath=$OutputDirectory/obj/kernel/" `

@@ -10,15 +10,19 @@ namespace Ruri.RipperHook
         public static List<ILHook> ilHooks = new List<ILHook>();
 
         private static readonly object LoadedGameHooksSyncRoot = new();
-        private static readonly Dictionary<string, HashSet<GameType>> LoadedGameHooks = new(StringComparer.OrdinalIgnoreCase);
+        private static readonly Dictionary<string, HashSet<string>> LoadedGameHooks = new(StringComparer.OrdinalIgnoreCase);
 
         public static bool IsGameLoaded(GameType gameType)
+            => gameType != GameType.Unknown && IsGameLoaded(gameType.ToString());
+
+        public static bool IsGameLoaded(string gameName)
         {
+            ArgumentException.ThrowIfNullOrWhiteSpace(gameName);
             lock (LoadedGameHooksSyncRoot)
             {
-                foreach (HashSet<GameType> gameTypes in LoadedGameHooks.Values)
+                foreach (HashSet<string> gameTypes in LoadedGameHooks.Values)
                 {
-                    if (gameTypes.Contains(gameType))
+                    if (gameTypes.Contains(gameName))
                     {
                         return true;
                     }
@@ -35,22 +39,33 @@ namespace Ruri.RipperHook
                 return;
             }
 
+            RegisterLoadedGameHook(gameType.ToString());
+        }
+
+        public static void RegisterLoadedGameHook(string gameName)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(gameName);
+            if (string.Equals(gameName, nameof(GameType.Unknown), StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
             string scopeId = HookManager.CurrentScopeId ?? string.Empty;
             bool added;
             lock (LoadedGameHooksSyncRoot)
             {
-                if (!LoadedGameHooks.TryGetValue(scopeId, out HashSet<GameType>? gameTypes))
+                if (!LoadedGameHooks.TryGetValue(scopeId, out HashSet<string>? gameTypes))
                 {
-                    gameTypes = new HashSet<GameType>();
+                    gameTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                     LoadedGameHooks[scopeId] = gameTypes;
                 }
 
-                added = gameTypes.Add(gameType);
+                added = gameTypes.Add(gameName);
             }
 
             if (added)
             {
-                HookManager.RegisterCleanup(() => RemoveLoadedGameHook(scopeId, gameType));
+                HookManager.RegisterCleanup(() => RemoveLoadedGameHook(scopeId, gameName));
             }
         }
 
@@ -72,16 +87,16 @@ namespace Ruri.RipperHook
             ilHooks.Clear();
         }
 
-        private static void RemoveLoadedGameHook(string scopeId, GameType gameType)
+        private static void RemoveLoadedGameHook(string scopeId, string gameName)
         {
             lock (LoadedGameHooksSyncRoot)
             {
-                if (!LoadedGameHooks.TryGetValue(scopeId, out HashSet<GameType>? gameTypes))
+                if (!LoadedGameHooks.TryGetValue(scopeId, out HashSet<string>? gameTypes))
                 {
                     return;
                 }
 
-                gameTypes.Remove(gameType);
+                gameTypes.Remove(gameName);
                 if (gameTypes.Count == 0)
                 {
                     LoadedGameHooks.Remove(scopeId);

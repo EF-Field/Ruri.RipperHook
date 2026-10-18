@@ -18,8 +18,9 @@ KawakazeNotFound/RuriRipperImporter (public host)
 The private repository is a pinned source submodule, not an independent loaded
 assembly. Public history contains its URL and Git commit ID, not its files.
 The upstream private `Source/Ruri.GameHook` gitlink and its Unity/Unreal build
-inputs are removed. This fork uses only `Source/Endfield-GameHook` for its private
-adapter; `Source/Ruri.Hook` is the public hook framework and remains in-tree.
+inputs are removed. The default private gitlink remains `Source/Endfield-GameHook`;
+an external private adapter checkout can be selected with `GameHookRoot`.
+`Source/Ruri.Hook` is the public hook framework and remains in-tree.
 Initialize only the submodules needed for the selected profile.
 
 `Ruri.Tpk` scans the private adapter's `Endfield` directory for drift handling.
@@ -69,3 +70,38 @@ solvers. The adapter registers and clears callbacks with its session lifecycle.
 
 Preserve upstream licenses. Repository privacy is an access boundary, not a
 replacement for license obligations.
+
+## Open product registration and external adapter roots
+
+The install probe and decoder catalog already return string identities through
+the existing host bridge. A private adapter can now declare
+`[RipperHook("ProductName", "1.0.0", "2021.3.0f1")]` and
+`[GameCapabilities("ProductName")]` without editing the kernel's legacy `GameType`
+enum. Keep the exact product name stated by the install. Enum constructors and
+method overloads remain supported. `RipperHookCommon.ApplyCapabilities()` uses
+the current hook attribute's product and decoder version. Runtime loaded-game
+registration/query/cleanup also accepts strings, scoped to the hook lifecycle.
+
+New private source trees provide a generic `GameHook.targets` entry. Select one
+using `UseGameHook=true` and `GameHookRoot`; adapter-specific selection stays
+inside that private tree. `UseEndfieldGameHook` and the default nested gitlink
+remain compatibility defaults. Older pinned trees with only
+`Integration/Statement.targets` still build through their old Statement entry.
+
+```powershell
+./Source/Build/build-kernel.ps1 -PrivateHook `
+  -GameHookRoot 'PATH_TO_PRIVATE_ADAPTERS' -GameHookGame 'ADAPTER_ID' `
+  -DependencySnapshot 'COMPATIBLE_SNAPSHOT' -OutputDirectory 'C:/temp/adapter-build'
+```
+
+New private products can provide `[RipperInstallProbe]` for custom installation
+identity and `[RipperEngineFile]` for transformed Unity identity-file reading.
+No per-product host detection branch is needed. Game-specific UI/shader work is
+separate. The optional TPK drift/stub generator retains its historical routing;
+it is not required to register runtime product strings.
+
+Public source-profile guards (no private files required):
+`python -m unittest discover -s Source/Build -p "test_*.py"`.
+`Source/Build/AdapterContracts` exercises synthetic string-product discovery,
+the existing install/decoder bridge, capability version selection and scoped
+cleanup against a separately built kernel (`-p:BackendDir=...`).

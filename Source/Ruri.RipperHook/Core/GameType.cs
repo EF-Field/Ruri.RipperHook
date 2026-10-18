@@ -1,7 +1,9 @@
 namespace Ruri.RipperHook;
 
 /// <summary>
-/// The games this build can decode. A member's NAME is the Unity productName the game's own
+/// Legacy named identities retained for source and binary compatibility. New decoders may
+/// register productName strings directly; adding an enum member is not a registration step.
+/// A member's NAME is the Unity productName the game's own
 /// player carries (the second line of its <c>&lt;Product&gt;_Data/app.info</c>, which is
 /// PlayerSettings.productName) -- spelled exactly, case included, so an install joins to its
 /// decoder by string equality with nothing translating in between. Rename the member when the

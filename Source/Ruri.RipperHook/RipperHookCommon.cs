@@ -29,7 +29,7 @@ public abstract class RipperHookCommon : RuriHook
         if (ripperHookAttr != null)
         {
             RegisterModule(new AR.TextureConversionHook());
-            RuriRuntimeHook.RegisterLoadedGameHook(ripperHookAttr.GameType);
+            RuriRuntimeHook.RegisterLoadedGameHook(ripperHookAttr.GameName);
         }
     }
 
@@ -40,10 +40,17 @@ public abstract class RipperHookCommon : RuriHook
     }
 
     protected void ApplyCapabilities(GameType game)
+        => ApplyCapabilities(game.ToString());
+
+    protected void ApplyCapabilities() => ApplyCapabilities(
+        GetType().GetCustomAttribute<RipperHookAttribute>()?.GameName
+        ?? throw new InvalidOperationException($"{GetType().Name} has no {nameof(RipperHookAttribute)}."));
+
+    protected void ApplyCapabilities(string gameName)
     {
         RipperHookAttribute attr = GetType().GetCustomAttribute<RipperHookAttribute>()
             ?? throw new InvalidOperationException($"{GetType().Name} has no {nameof(RipperHookAttribute)}.");
-        CapabilityResolver.Apply(game, attr.Version, Registry);
+        CapabilityResolver.Apply(gameName, attr.Version, Registry);
     }
 
     protected override void InitAttributeHook()

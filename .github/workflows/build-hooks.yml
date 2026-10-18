@@ -185,6 +185,18 @@ jobs:
         # strip + Release project-reference config (see Ruri.RipperHook.csproj).
         run: dotnet build -c Release -p:PureRelease=true
 
+      - name: Test generic adapter source profiles
+        shell: pwsh
+        run: python -m unittest discover -s Source/Build -p "test_*.py"
+
+      - name: Test open product identity through the public host bridge
+        shell: pwsh
+        run: >-
+          dotnet run --project Source/Build/AdapterContracts/AdapterContracts.csproj -c Release
+          "-p:BackendDir=$env:GITHUB_WORKSPACE/Source/0Bins/Release"
+          "-p:BaseIntermediateOutputPath=$env:RUNNER_TEMP/adapter-contracts/obj/"
+          "-p:OutputPath=$env:RUNNER_TEMP/adapter-contracts/bin/"
+
       - name: Upload Pure RipperHook artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

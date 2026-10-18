@@ -4,7 +4,8 @@
 - `Source/Ruri.Hook` is the required public in-tree framework, not a private submodule.
 - Upstream's private `Source/Ruri.GameHook` is removed in this fork. References
   below describe upstream only; do not restore that gitlink or its build inputs.
-- This fork composes only `Source/Endfield-GameHook` through `UseEndfieldGameHook`;
+- This fork selects private adapters through `UseGameHook` and `GameHookRoot`.
+  `UseEndfieldGameHook` and `Source/Endfield-GameHook` remain compatibility defaults;
   `PureRelease` excludes private sources and the private type-tree pack.
 - The TPK scanner targets our adapter. Default generated output is beside the
   tool, not in the accepted private runtime pack.
@@ -20,7 +21,7 @@ Ruri-RipperHook 内核约束(唯一常驻):RuriRipperImporter 的上游数据管
 3. GameHook 按引擎分两半:Unity 子树编进 Ruri.RipperHook,Unreal 子树编进 Ruri.FModelHook(唯一可引用 CUE4Parse 的项目)。
 4. FModelHook/BlenderBridge 只放无任何加密的通用 UE 读取,Ruri.GameHook/Unreal/{游戏} 只放该游戏的解密与身份(容器方言、key/mappings 发布处、认游戏的文件)。
 5. 禁新建 assembly,任何特性(含重型/原生依赖)落进现有 csproj 默认 Ruri.RipperHook,想为隔离依赖起新项目是信号错误,改为往核心加 hook。
-6. 只用 AOP:游戏行为走 [RipperHook(GameType,游戏版本,引擎版本)],宿主能力走 [RipperFeature](两者正交),禁子类化/monkey-patch 上游、禁共享代码里 if(game==X)、禁 ProjectReference 上游再改它。
+6. 只用 AOP:游戏行为走 [RipperHook(productName,游戏版本,引擎版本)](保留 GameType 重载兼容),宿主能力走 [RipperFeature](两者正交),禁子类化/monkey-patch 上游、禁共享代码里 if(game==X)、禁 ProjectReference 上游再改它。
 7. hook 只走 Ruri.Hook 的 RetargetMethod/RetargetMethodFunc/RetargetMethodCtorFunc + Initialize(),禁裸 new MonoMod Hook/ILHook(唯一例外 Ruri.Hook 自身的 ReflectionExtensions.RetargetCall*)。
 8. 写 hook 优先级:上游有扩展点就用或去上游加 > 包装原方法 > 整体替换(整体替换必须录基线)。
 9. 上游改了不报错是头号静默故障,hook 相关报错/错数据/内存暴涨先看 Upstream rewrote 警告,先读上游 diff 再重录基线,顺序反了就是把真 bug 盖章成正常。

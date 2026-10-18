@@ -13,13 +13,23 @@ namespace Ruri.RipperHook.Attributes;
 public sealed class RipperHookAttribute : GameHookAttribute
 {
     public GameType GameType { get; }
-    public override string GameName { get => GameType.ToString(); }
+    public override string GameName { get; }
     public override string Version { get; }
     public override string EngineVersion { get; }
 
     public RipperHookAttribute(GameType gameType, string version = "", string engineVersion = "")
+        : this(gameType.ToString(), version, engineVersion)
     {
         GameType = gameType;
+    }
+
+    /// <summary>Register the install's productName without extending the kernel's legacy enum.</summary>
+    public RipperHookAttribute(string gameName, string version = "", string engineVersion = "")
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(gameName);
+        GameName = gameName;
+        GameType = Enum.TryParse<GameType>(gameName, out var known) && Enum.IsDefined(known)
+            ? known : GameType.Unknown;
         Version = version;
         EngineVersion = engineVersion;
     }

@@ -19,7 +19,11 @@
 		<DefineConstants>$(DefineConstants);TRACE;RURI_PURE_RELEASE</DefineConstants>
 	</PropertyGroup>
 
-	<!-- Private adapters are composed only through the explicit Endfield profile below. -->
+	<!-- Private adapters are opt-in. The old switch/path remain compatibility defaults. -->
+    <PropertyGroup>
+        <UseGameHook Condition="'$(UseGameHook)' == ''">$(UseEndfieldGameHook)</UseGameHook>
+        <GameHookRoot Condition="'$(GameHookRoot)' == ''">$(MSBuildThisFileDirectory)../Endfield-GameHook</GameHookRoot>
+    </PropertyGroup>
 
 	<ItemGroup>
 		<PackageReference Include="AsmResolver.DotNet" Version="6.0.1" />
@@ -103,12 +107,21 @@
 	</ItemGroup>
 
     <!-- Private source composition is explicit and mutually exclusive with PureRelease. -->
-    <Import Project="../Endfield-GameHook/Integration/Statement.targets"
-            Condition="'$(UseEndfieldGameHook)' == 'true' and '$(PureRelease)' != 'true' and Exists('../Endfield-GameHook/Integration/Statement.targets')" />
+    <Import Project="$(GameHookRoot)/GameHook.targets"
+            Condition="'$(UseGameHook)' == 'true' and '$(PureRelease)' != 'true' and Exists('$(GameHookRoot)/GameHook.targets')" />
+    <!-- Older pinned adapters predate the generic entry. Keep their Statement build working. -->
+    <Import Project="$(GameHookRoot)/Integration/Statement.targets"
+            Condition="'$(UseGameHook)' == 'true' and '$(PureRelease)' != 'true' and !Exists('$(GameHookRoot)/GameHook.targets') and Exists('$(GameHookRoot)/Integration/Statement.targets')" />
     <Target Name="ValidatePrivateSourceSelection" BeforeTargets="PrepareForBuild">
-        <Error Condition="'$(UseEndfieldGameHook)' == 'true' and '$(PureRelease)' == 'true'"
+        <Error Condition="('$(UseGameHook)' == 'true' or '$(UseEndfieldGameHook)' == 'true') and '$(PureRelease)' == 'true'"
                Text="PureRelease excludes private sources. Select only one build profile." />
-        <Error Condition="'$(UseEndfieldGameHook)' == 'true' and !Exists('../Endfield-GameHook/Integration/Statement.targets')"
-               Text="Initialize Source/Endfield-GameHook before building the private profile." />
+        <Error Condition="'$(UseEndfieldGameHook)' == 'true' and '$(UseGameHook)' != 'true'"
+               Text="UseEndfieldGameHook conflicts with UseGameHook. Select one private profile." />
+        <Error Condition="'$(UseGameHook)' == 'true' and !Exists('$(GameHookRoot)/GameHook.targets') and !Exists('$(GameHookRoot)/Integration/Statement.targets')"
+               Text="Initialize the private adapter checkout or set GameHookRoot to its path." />
+        <Error Condition="'$(UseGameHook)' == 'true' and !Exists('$(GameHookRoot)/GameHook.targets') and '$(GameHookGame)' != '' and '$(GameHookGame)' != 'Endfield'"
+               Text="This older adapter supports only its legacy Endfield registration. Use an adapter with GameHook.targets." />
+        <Error Condition="'$(UseGameHook)' == 'true' and !Exists('$(GameHookRoot)/GameHook.targets') and '$(GameHookAbi)' != '' and '$(GameHookAbi)' != 'Statement'"
+               Text="This older adapter entry supports only Statement." />
     </Target>
 </Project>
