@@ -7,7 +7,7 @@ internal static class RepoLayout
     public static string Root { get; } = Locate();
 
     public static string HookSourceRoot =>
-        Path.Combine(Root, "Source", "Endfield-GameHook", "Endfield");
+        Path.Combine(Root, "Source", "KWZE.GameHook", "Endfield");
 
     private static string Locate()
     {

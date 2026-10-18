@@ -12,7 +12,10 @@ class PrivateModuleBoundaryTests(unittest.TestCase):
     def test_submodule_registration(self):
         modules = (ROOT / '.gitmodules').read_text(encoding='utf-8')
         self.assertNotIn(RETIRED, modules)
-        self.assertIn('Source/Endfield-GameHook', modules)
+        self.assertIn('[submodule "Source/KWZE.GameHook"]', modules)
+        self.assertIn('path = Source/KWZE.GameHook', modules)
+        self.assertIn('url = https://github.com/EF-Field/KWZE.GameHook.git', modules)
+        self.assertNotIn('Endfield-GameHook', modules)
 
     def test_no_retired_build_inputs(self):
         for name in ('Ruri.RipperHook', 'Ruri.FModelHook'):
@@ -27,7 +30,8 @@ class PrivateModuleBoundaryTests(unittest.TestCase):
         gitlinks = [row.split('\t', 1)[1] for row in rows if row.startswith('160000 ')]
         self.assertNotIn(RETIRED, gitlinks)
         self.assertNotIn('Source/Ruri.Hook', gitlinks)
-        self.assertIn('Source/Endfield-GameHook', gitlinks)
+        self.assertIn('Source/KWZE.GameHook', gitlinks)
+        self.assertNotIn('Source/Endfield-GameHook', gitlinks)
         self.assertTrue((ROOT / 'Source/Ruri.Hook/RuriHook.cs').is_file())
         self.assertTrue((ROOT / 'Source/Ruri.Hook/Ruri.Hook.csproj').is_file())
 
@@ -36,7 +40,7 @@ class PrivateModuleBoundaryTests(unittest.TestCase):
         self.assertIn('Path.Combine(AppContext.BaseDirectory, "generated", TpkFileName)', program)
         layout = (ROOT / 'Source/Ruri.Tpk/Pipeline/RepoLayout.cs').read_text(encoding='utf-8')
         self.assertNotIn('Ruri.GameHook', layout)
-        self.assertIn('"Endfield-GameHook", "Endfield"', layout)
+        self.assertIn('"KWZE.GameHook", "Endfield"', layout)
 
 
 if __name__ == '__main__':

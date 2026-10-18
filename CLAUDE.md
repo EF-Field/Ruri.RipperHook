@@ -5,7 +5,7 @@
 - Upstream's private `Source/Ruri.GameHook` is removed in this fork. References
   below describe upstream only; do not restore that gitlink or its build inputs.
 - This fork selects private adapters through `UseGameHook` and `GameHookRoot`.
-  `UseEndfieldGameHook` and `Source/Endfield-GameHook` remain compatibility defaults;
+  `Source/KWZE.GameHook` is the default private root; `UseEndfieldGameHook` remains a compatibility alias;
   `PureRelease` excludes private sources and the private type-tree pack.
 - The TPK scanner targets our adapter. Default generated output is beside the
   tool, not in the accepted private runtime pack.

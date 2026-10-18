@@ -11,7 +11,7 @@ $Root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $Profile = if ($PrivateHook) { 'private' } else { 'public' }
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $Root "Source/0Bins/$Profile" }
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
-if (-not $GameHookRoot) { $GameHookRoot = Join-Path $Root 'Source/Endfield-GameHook' }
+if (-not $GameHookRoot) { $GameHookRoot = Join-Path $Root 'Source/KWZE.GameHook' }
 if ($PrivateHook) { $GameHookRoot = (Resolve-Path -LiteralPath $GameHookRoot).Path }
 if (-not $DependencySnapshot -and $PrivateHook) {
     $DependencySnapshot = Join-Path $GameHookRoot 'runtime'

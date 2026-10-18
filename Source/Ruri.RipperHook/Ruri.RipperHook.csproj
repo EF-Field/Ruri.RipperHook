@@ -19,10 +19,10 @@
 		<DefineConstants>$(DefineConstants);TRACE;RURI_PURE_RELEASE</DefineConstants>
 	</PropertyGroup>
 
-	<!-- Private adapters are opt-in. The old switch/path remain compatibility defaults. -->
+	<!-- Private adapters are opt-in. The old switch remains a compatibility alias. -->
     <PropertyGroup>
         <UseGameHook Condition="'$(UseGameHook)' == ''">$(UseEndfieldGameHook)</UseGameHook>
-        <GameHookRoot Condition="'$(GameHookRoot)' == ''">$(MSBuildThisFileDirectory)../Endfield-GameHook</GameHookRoot>
+        <GameHookRoot Condition="'$(GameHookRoot)' == ''">$(MSBuildThisFileDirectory)../KWZE.GameHook</GameHookRoot>
     </PropertyGroup>
 
 	<ItemGroup>

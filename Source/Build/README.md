@@ -10,15 +10,15 @@ not certify all rendering or game-runtime features. Preserve
 public/private source and artifact isolation.
 
 ```
-KawakazeNotFound/RuriRipperImporter (public host)
-  Ruri.RipperHook -> KawakazeNotFound/Ruri.RipperHook (public kernel)
-    Source/Endfield-GameHook -> KawakazeNotFound/Endfield-GameHook (private)
+EF-Field/RuriRipperImporter (public host)
+  Ruri.RipperHook -> EF-Field/Ruri.RipperHook (public kernel)
+    Source/KWZE.GameHook -> EF-Field/KWZE.GameHook (private)
 ```
 
 The private repository is a pinned source submodule, not an independent loaded
 assembly. Public history contains its URL and Git commit ID, not its files.
 The upstream private `Source/Ruri.GameHook` gitlink and its Unity/Unreal build
-inputs are removed. The default private gitlink remains `Source/Endfield-GameHook`;
+inputs are removed. The default private gitlink is `Source/KWZE.GameHook`;
 an external private adapter checkout can be selected with `GameHookRoot`.
 `Source/Ruri.Hook` is the public hook framework and remains in-tree.
 Initialize only the submodules needed for the selected profile.
@@ -31,7 +31,7 @@ not a published private runtime pack. Supply an explicit output path when needed
 
 ```powershell
 git submodule update --init Source/Ruri.ShaderDecompiler
-git submodule update --init Source/Endfield-GameHook
+git submodule update --init Source/KWZE.GameHook
 ./Source/Build/build-kernel.ps1 -PrivateHook
 ```
 
@@ -86,8 +86,8 @@ New private source trees provide a generic `GameHook.targets` entry. Select one
 using `UseGameHook=true` and `GameHookRoot`; adapter-specific selection stays
 inside that private tree, which composes all registered games into the SAME
 kernel. Runtime install identity selects a decoder; there is no per-game Hook
-build. `UseEndfieldGameHook` and the default nested gitlink
-remain compatibility defaults. Older pinned trees with only
+build. The default nested gitlink is `Source/KWZE.GameHook`;
+`UseEndfieldGameHook` remains a compatibility alias. Older pinned trees with only
 `Integration/Statement.targets` still build through their old Statement entry.
 
 ```powershell

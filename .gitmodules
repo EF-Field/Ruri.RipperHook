@@ -7,6 +7,6 @@
 [submodule "FModel"]
 	path = FModel
 	url = https://github.com/4sval/FModel
-[submodule "Source/Endfield-GameHook"]
-	path = Source/Endfield-GameHook
-	url = https://github.com/KawakazeNotFound/Endfield-GameHook.git
+[submodule "Source/KWZE.GameHook"]
+	path = Source/KWZE.GameHook
+	url = https://github.com/EF-Field/KWZE.GameHook.git

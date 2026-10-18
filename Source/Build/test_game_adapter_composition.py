@@ -36,6 +36,13 @@ class GameAdapterCompositionTests(unittest.TestCase):
     def fixture_compiled(self, result):
         return any(Path(row['FullPath']) == self.root / 'Hook.cs' for row in result['Items']['Compile'])
 
+    def test_default_private_root_uses_canonical_submodule_name(self):
+        result = subprocess.run(['dotnet', 'msbuild', str(PROJECT), '-nologo',
+                                 '-getProperty:GameHookRoot'],
+                                text=True, encoding='utf-8', capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(Path(result.stdout.strip()).resolve(), ROOT / 'Source/KWZE.GameHook')
+
     def test_generic_external_private_root(self):
         result = self.evaluate({'UseGameHook': 'true', 'GameHookRoot': str(self.root)})
         self.assertTrue(self.fixture_compiled(result))
