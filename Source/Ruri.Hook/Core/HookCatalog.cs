@@ -343,27 +343,27 @@ public static class HookCatalog
                 continue;
             }
 
-            Type[] types;
-            try
+            foreach (Type type in TypesOf(assembly))
             {
-                types = assembly.GetTypes();
+                yield return type;
             }
-            catch (ReflectionTypeLoadException exception)
-            {
-                types = exception.Types.Where(static type => type is not null).ToArray()!;
-            }
-            catch
-            {
-                continue;
-            }
+        }
+    }
 
-            foreach (Type type in types)
-            {
-                if (type is not null)
-                {
-                    yield return type;
-                }
-            }
+    /// <summary>Every type of an assembly that loads, so a type that does not does not hide the others.</summary>
+    public static Type[] TypesOf(Assembly assembly)
+    {
+        try
+        {
+            return assembly.GetTypes();
+        }
+        catch (ReflectionTypeLoadException exception)
+        {
+            return exception.Types.Where(static type => type is not null).ToArray()!;
+        }
+        catch
+        {
+            return Array.Empty<Type>();
         }
     }
 }

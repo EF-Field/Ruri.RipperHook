@@ -73,6 +73,7 @@ namespace Ruri.Hook.Utils
 
         public static void RetargetCallFunc(Func<ILContext, bool> func, MethodInfo srcMethod)
         {
+            HookInlining.Require(srcMethod);
             SupersedePrevious(_funcHookedSources, srcMethod, $"{srcMethod.DeclaringType?.Name}.{srcMethod.Name}");
 
             var hookDest = new ILContext.Manipulator(il =>
@@ -89,6 +90,7 @@ namespace Ruri.Hook.Utils
 
         public static void RetargetCallCtorFunc(Func<ILContext, bool> func, ConstructorInfo srcMethod)
         {
+            HookInlining.Require(srcMethod);
             SupersedePrevious(_ctorFuncHookedSources, srcMethod, $"{srcMethod.DeclaringType?.Name}.{srcMethod.Name}");
 
             var hookDest = new ILContext.Manipulator(il =>
@@ -105,6 +107,7 @@ namespace Ruri.Hook.Utils
 
         public static void RetargetCall(MethodInfo srcMethod, MethodInfo targetMethod, int maxArgIndex = 1, bool isBefore = true, bool isReturn = true)
         {
+            HookInlining.Require(srcMethod);
             var callKey = (srcMethod, isBefore, isReturn);
             SupersedePrevious(_callHookedSources, callKey, $"{srcMethod.DeclaringType?.Name}.{srcMethod.Name}");
 

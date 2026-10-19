@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+using AssetRipper.Conversions.FastPng;
 using AssetRipper.Export.Configuration;
 using AssetRipper.Export.Modules.Textures;
 using AssetRipper.Export.UnityProjects.Textures;
@@ -22,13 +24,18 @@ public static class TextureEncoding
 {
     /// <summary>The png encoder's one-time initialisation, forced through on ONE thread before
     /// any worker reaches it: its type initialisers register into a shared unsynchronised
-    /// dictionary, and several running at once poison the type for the whole process.</summary>
+    /// dictionary, and several running at once poison the type for the whole process. The 1x1
+    /// encodes leave initialisers to the workers, so every initialiser of the module is run here.</summary>
     private static readonly Lazy<bool> Warm = new(static () =>
     {
         using MemoryStream rgba = new();
         new DirectBitmap<ColorRGBA<byte>, byte>(1, 1).Save(rgba, ImageExportFormat.Png);
         using MemoryStream rgb = new();
         new DirectBitmap<ColorRGB<byte>, byte>(1, 1).Save(rgb, ImageExportFormat.Png);
+        foreach (Type type in typeof(FPng).Assembly.GetTypes().Where(static type => !type.ContainsGenericParameters))
+        {
+            RuntimeHelpers.RunClassConstructor(type.TypeHandle);
+        }
         return true;
     }, LazyThreadSafetyMode.ExecutionAndPublication);
 

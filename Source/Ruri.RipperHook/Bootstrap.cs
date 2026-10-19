@@ -52,9 +52,17 @@ public static class Bootstrap
     /// assembly's absolute path, so a host needs no setting to find the decoders built into
     /// another output (FModel's, for the Unreal decoder) and an Unreal install is recognized the
     /// moment any host looks at it. A declared path that no longer exists is an error, never a
-    /// silent skip.
+    /// silent skip. Every method a hook may retarget is then reserved against inlining
+    /// (<see cref="HookInlining"/>), before any of its callers can be compiled.
     /// </summary>
     public static IReadOnlyList<Assembly> LoadDeclaredModules()
+    {
+        IReadOnlyList<Assembly> loaded = LoadModulesBesideKernel();
+        HookInlining.ReserveDeclared();
+        return loaded;
+    }
+
+    private static IReadOnlyList<Assembly> LoadModulesBesideKernel()
     {
         string directory = Path.Combine(Path.GetDirectoryName(typeof(Bootstrap).Assembly.Location)!, ModulesFolder);
         List<Assembly> loaded = new();

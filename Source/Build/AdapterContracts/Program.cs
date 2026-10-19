@@ -141,6 +141,7 @@ Select(null);
 Check(FixtureModule.Value is null && !RuriRuntimeHook.IsGameLoaded("SwitchProductA"), "A to no decoder");
 Check(TypeTreeDatabase.ActiveVersion.IsEmpty && gate.Invoke(null, [ClassIDType.Mesh, "fixture"]) is null, "No stale schema state");
 Console.WriteLine($"ADAPTER_REGISTRATION_CONTRACT_PASS checks={checks}");
+UpstreamSyncContracts.Run();
 
 [RipperHook("FixtureProduct", "1.0.0", "2021.3.0f1")]
 public sealed class FixtureHookV1 : RipperHookCommon
